@@ -6,7 +6,13 @@ The main modifications are the followings:
 1.  **Remove the blending weight in static NeRF. I adopt the addition strategy in [NeRF-W](https://github.com/kwea123/nerf_pl/tree/nerfw).**
 2.  **Compose static dynamic also in image warping.**
 
-These modifications empirically produces better result on the `kid-running` scene, as can be shown as below:
+These modifications empirically produces better result on the `kid-running` scene, as shown below:
+
+### Reconstruction
+
+### Fix-view-change-time (view 8, times from 0 to 16)
+
+### Fix-time-change-view (time 8, views from 0 to 16)
 
 ⚠️However, more experiments on other scenes are needed to finally prove that these modifications produce overall better quality.
 
@@ -47,18 +53,18 @@ Download the pretrained models and training logs in [release](https://github.com
 
 |           | training GPU memory in GB (batchsize=512) | Speed (1 step) |
 | :---:     |  :---:     | :---:   | 
-| [Original](https://github.com/zhengqili/Neural-Scene-Flow-Fields)  |  8.5 | 0.177s |
+| [Original](https://github.com/zhengqili/Neural-Scene-Flow-Fields)  |  - | - |
 | This repo | 5.9 | 0.2s |
 
 The speed is measured on 1 RTX2080Ti.
 
 # :mag_right: Testing
 
-See [test.ipynb](test.ipynb) for scene reconstruction, scene decomposition, etc.
+See [test.ipynb](test.ipynb) for scene reconstruction, scene decomposition, fix-time-change-view, ..., etc. You can get almost everything out of this notebook.
 
-Use [eval.py](eval.py) to create the whole sequence of moving views.
+<!-- Use [eval.py](eval.py) to create the whole sequence of moving views.
 E.g.
 ```
 python eval.py \
    --root_dir $ROOT_DIR \
-```
+``` -->
