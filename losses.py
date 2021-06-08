@@ -56,8 +56,8 @@ class NeRFWLoss(nn.Module):
 
         self.topk = topk
 
-        # self.Ks (18, 3, 3) and
-        # self.Ps (world to image projection matrices) (18, N_frames, 3, 4) and
+        # self.Ks (1, 3, 3) and
+        # self.Ps (world to image projection matrices) (1, N_frames, 3, 4) and
         # self.max_t (N_frames-1)
         # are registered as buffers in train.py !
 
