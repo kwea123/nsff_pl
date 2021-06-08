@@ -56,8 +56,8 @@ class NeRFWLoss(nn.Module):
 
         self.topk = topk
 
-        # self.Ks (1, 3, 3) and
-        # self.Ps (world to image projection matrices) (1, N_frames, 3, 4) and
+        # self.Ks (18, 3, 3) and
+        # self.Ps (world to image projection matrices) (18, N_frames, 3, 4) and
         # self.max_t (N_frames-1)
         # are registered as buffers in train.py !
 
@@ -76,11 +76,11 @@ class NeRFWLoss(nn.Module):
         if kwargs['output_transient_flow']: # flow losses
             ret['entropy_l'] = self.lambda_ent * \
                 torch.sum(-inputs['transient_weights_fine']*
-                        torch.log(inputs['transient_weights_fine']+1e-8), -1)
+                          torch.log(inputs['transient_weights_fine']+1e-8), -1)
             if 'weights_coarse' in inputs:
                 ret['entropy_l'] += self.lambda_ent * \
                     torch.sum(-inputs['transient_weights_coarse']*
-                            torch.log(inputs['transient_weights_coarse']+1e-8), -1)
+                              torch.log(inputs['transient_weights_coarse']+1e-8), -1)
 
             Ks = self.Ks[targets['cam_ids']] # (N_rays, 3, 3)
             xyz_fw_w = ray_utils.ndc2world(inputs['transient_xyz_fw'], Ks) # (N_rays, 3)
@@ -122,15 +122,15 @@ class NeRFWLoss(nn.Module):
                 inputs['transient_disoccs_bw'].sum()
             ret['disocc_l'] = self.lambda_reg * (1-inputs['transient_disocc_fw']+
                                                  1-inputs['transient_disocc_bw'])
-
-            ret['reg_min_l'] = self.lambda_reg * (torch.abs(inputs['transient_flows_fw'])+
-                                                  torch.abs(inputs['transient_flows_bw']))
+            
             N = inputs['xyzs_fine'].shape[1]
             z_far = 0.95
             xyzs_w = ray_utils.ndc2world(inputs['xyzs_fine'][:, :int(N*z_far)], Ks)
             xyzs_fw_w = ray_utils.ndc2world(inputs['xyzs_fw'][:, :int(N*z_far)], Ks)
             xyzs_bw_w = ray_utils.ndc2world(inputs['xyzs_bw'][:, :int(N*z_far)], Ks)
             ret['reg_temp_sm_l'] = self.lambda_reg * torch.abs(xyzs_fw_w+xyzs_bw_w-2*xyzs_w)
+            ret['reg_min_l'] = self.lambda_reg * (torch.abs(xyzs_fw_w-xyzs_w)+
+                                                  torch.abs(xyzs_bw_w-xyzs_w))
 
             d = torch.norm(xyzs_w[:, 1:]-xyzs_w[:, :-1], dim=-1, keepdim=True)
             sp_w = torch.exp(-2*d) # weight decreases as the distance increases
