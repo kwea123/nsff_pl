@@ -167,8 +167,8 @@ class NeRFSystem(LightningModule):
                           pin_memory=True)
 
     def on_train_epoch_start(self):
-        self.loss.lambda_geo_d = self.hparams.lambda_geo_init * 0.1**(self.current_epoch//10)
-        self.loss.lambda_geo_f = self.hparams.lambda_geo_init * 0.1**(self.current_epoch//10)
+        self.loss.lambda_geo_d = self.hparams.lambda_geo_init * 0.5**(self.current_epoch//10)
+        self.loss.lambda_geo_f = self.hparams.lambda_geo_init * 0.5**(self.current_epoch//10)
 
     def training_step(self, batch, batch_nb):
         rays, rgbs, ts = batch['rays'], batch['rgbs'], batch.get('ts', None)

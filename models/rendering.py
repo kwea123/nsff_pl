@@ -139,6 +139,7 @@ def render_rays(models,
 
         typ = model.typ
         results[f'zs_{typ}'] = zs
+        results[f'xyzs_{typ}'] = xyz
         N_samples_ = xyz.shape[1]
         xyz_ = rearrange(xyz, 'n1 n2 c -> (n1 n2) c', c=3)
 
@@ -213,7 +214,6 @@ def render_rays(models,
             alphas = 1-(1-static_alphas)*(1-transient_alphas)
 
             if (not test_time) and output_transient_flow: # render with flowed-xyzs
-                results['xyzs_fine'] = xyz
                 results['xyzs_fw'] = xyz_fw = xyz + transient_flows_fw
                 xyz_fw_ = rearrange(xyz_fw, 'n1 n2 c -> (n1 n2) c', c=3)
                 tp1_embedded = embeddings['t'](torch.clamp(ts+1, max=max_t)) # t+1
