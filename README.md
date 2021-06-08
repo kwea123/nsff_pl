@@ -11,7 +11,7 @@ These modifications empirically produces better result on the `kid-running` scen
 ### Full reconstruction
 
 <p align="center">
-  <img src="https://github.com/kwea123/nsff_pl/assets/recon.gif", width="80%">
+  <img src="assets/recon.gif", width="99%">
   <br>
   <sup>Left: GT. Center: this repo (PSNR=35.02). Right: pretrained model of the original repo(PSNR=30.45).</sup>
 </p>
