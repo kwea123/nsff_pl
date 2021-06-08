@@ -125,3 +125,4 @@ python eval.py \
 # TODO
 - [ ] Add COLMAP reconstruction tutorial (mask out dynamic region).
 - [ ] Remove NSFF dependency for data preparation. More precisely, the original code needs quite a lot modifications to work on own data, and the depth/flow are calculated on resized images, which might reduce their accuracy.
+- [ ] Exploit motion mask prior like https://free-view-video.github.io/
