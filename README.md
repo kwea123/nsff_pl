@@ -69,7 +69,7 @@ Our method also produces smoother depths, although it might not have direct impa
 ## Software
 
 * Clone this repo by `git clone --recursive https://github.com/kwea123/nsff_pl`
-* Python>=3.6 (installation via [anaconda](https://www.anaconda.com/distribution/) is recommended, use `conda create -n nsff_pl python=3.6` to create a conda environment and activate it by `conda activate nerf_pl`)
+* Python>=3.6 (installation via [anaconda](https://www.anaconda.com/distribution/) is recommended, use `conda create -n nsff_pl python=3.6` to create a conda environment and activate it by `conda activate nsff_pl`)
 * Python libraries
     * Install core requirements by `pip install -r requirements.txt`
 
