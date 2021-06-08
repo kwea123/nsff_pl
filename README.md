@@ -1,5 +1,5 @@
 # nsff_pl
-Neural Scene Flow Fields using pytorch-lightning. This repo reimplements the [NSFF](https://github.com/zhengqili/Neural-Scene-Flow-Fields) idea, but modifies several operations based on observation of NSFF results and discussions with the authors. For discussion details, please see the [issues](https://github.com/zhengqili/Neural-Scene-Flow-Fields/issues?q=is%3Aissue+author%3Akwea123) of the original repo.
+Neural Scene Flow Fields using pytorch-lightning. This repo reimplements the [NSFF](https://github.com/zhengqili/Neural-Scene-Flow-Fields) idea, but modifies several operations based on observation of NSFF results and discussions with the authors. For discussion details, please see the [issues](https://github.com/zhengqili/Neural-Scene-Flow-Fields/issues?q=is%3Aissue+author%3Akwea123) of the original repo. The code is based on my previous implementation.
 
 The main modifications are the followings:
 
@@ -8,13 +8,56 @@ The main modifications are the followings:
 
 These modifications empirically produces better result on the `kid-running` scene, as shown below:
 
-### Reconstruction
+### Full reconstruction
+
+<p align="center">
+  <img src="https://github.com/kwea123/nsff_pl/assets/recon.gif", width="80%">
+  <br>
+  <sup>Left: GT. Center: this repo (PSNR=35.02). Right: pretrained model of the original repo(PSNR=30.45).</sup>
+</p>
+
+### Background reconstruction
+
+<p align="center">
+  <img src="https://user-images.githubusercontent.com/11364490/121126826-c194bd00-c863-11eb-9e36-a4790455df2f.gif", width="80%">
+  <br>
+  <sup>Left: this repo. Right: pretrained model of the original repo (by setting raw_blend_w to 0).</sup>
+</p>
 
 ### Fix-view-change-time (view 8, times from 0 to 16)
 
+<p align="center">
+  <img src="https://user-images.githubusercontent.com/11364490/121122112-d3726200-c85b-11eb-8aaf-b4757a035280.gif", width="80%">
+  <br>
+  <sup>Left: this repo. Right: pretrained model of the original repo.</sup>
+</p>
+
 ### Fix-time-change-view (time 8, views from 0 to 16)
 
-⚠️However, more experiments on other scenes are needed to finally prove that these modifications produce overall better quality.
+<p align="center">
+  <img src="https://user-images.githubusercontent.com/11364490/121125017-cd32b480-c860-11eb-9cbf-e96674967963.gif", width="80%">
+  <br>
+  <sup>Left: this repo. Right: pretrained model of the original repo.</sup>
+</p>
+
+The color of our method is more vivid and closer to the GT images both qualitatively and quantitatively (not because of gif compression). Also, the background is more stable and cleaner.
+
+### Bonus - Depth
+
+Our method also produces smoother depths, although it might not have direct impact on image quality.
+
+<p align="center">
+  <img src="https://user-images.githubusercontent.com/11364490/121126332-f5231780-c862-11eb-89a6-98558e479c69.png", width="48%">
+  <img src="https://user-images.githubusercontent.com/11364490/121126404-0ff58c00-c863-11eb-9b31-72824b944ed1.png", width="48%">
+  <br>
+  <img src="https://user-images.githubusercontent.com/11364490/121126294-e9375580-c862-11eb-8a36-e560b4318621.png", width="48%">
+  <img src="https://user-images.githubusercontent.com/11364490/121126457-2865a680-c863-11eb-8fbd-aad471efbe3d.png", width="48%">
+  <br>
+  <sup>Top left: static depth from this repo. Top right: full depth from this repo. <br> Bottom left: static depth from the original repo. Bottom right: full depth from the original repo.
+  </sup>
+</p>
+
+⚠️ However, more experiments on other scenes are needed to finally prove that these modifications produce overall better quality.
 
 # :computer: Installation
 
@@ -35,7 +78,7 @@ These modifications empirically produces better result on the `kid-running` scen
 The data preparation follows the original repo. Therefore, please follow [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields#video-preprocessing) to prepare the data (resized images, monodepth and flow) for training.
 
 After data preparation, run the following command:
-```bash
+```j
 python train.py \
   --dataset_name monocular --root_dir $ROOT_DIR \
   --img_wh 512 288 --start_end 0 30 --batch_from_same_image \
@@ -53,7 +96,7 @@ Download the pretrained models and training logs in [release](https://github.com
 
 |           | training GPU memory in GB (batchsize=512) | Speed (1 step) |
 | :---:     |  :---:     | :---:   | 
-| [Original](https://github.com/zhengqili/Neural-Scene-Flow-Fields)  |  - | - |
+| [Original](https://github.com/zhengqili/Neural-Scene-Flow-Fields)  | 7.6 | 0.2 |
 | This repo | 5.9 | 0.2s |
 
 The speed is measured on 1 RTX2080Ti.
@@ -62,9 +105,18 @@ The speed is measured on 1 RTX2080Ti.
 
 See [test.ipynb](test.ipynb) for scene reconstruction, scene decomposition, fix-time-change-view, ..., etc. You can get almost everything out of this notebook.
 
-<!-- Use [eval.py](eval.py) to create the whole sequence of moving views.
+Use [eval.py](eval.py) to create the whole sequence of moving views.
 E.g.
-```
+```j
 python eval.py \
-   --root_dir $ROOT_DIR \
-``` -->
+  --dataset_name monocular --root_dir /home/ubuntu/data/nerf_example_data/my/kid-running/dense \
+  --N_samples 128 --N_importance 0 --img_wh 512 288 --start_end 0 30 \
+  --encode_t --output_transient \
+  --split test --video_format gif --fps 5 \
+  --ckpt_path kid.ckpt --scene_name kid_reconstruction
+```
+
+# :warning: Other differences with the original paper
+
+1.  I add entropy loss as suggested [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields/issues/18#issuecomment-851038816). This allows the person to be "thin" and produces less artifact when the camera is far from the original pose.
+2.  I explicitly zero the flows of far regions to avoid the flow being trapped in local minima (reason explained [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields/issues/19#issuecomment-855958276)).
