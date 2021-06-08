@@ -3,7 +3,7 @@ Neural Scene Flow Fields using pytorch-lightning. This repo reimplements the [NS
 
 The main modifications are the followings:
 
-1.  **Remove the blending weight in static NeRF. I adopt the addition strategy in [NeRF-W](https://github.com/kwea123/nerf_pl/tree/nerfw).**
+1.  **Remove the blending weight in static NeRF. I adopt the addition strategy in [NeRF-W](https://github.com/kwea123/nerf_pl/tree/nerfw).** Implementation details are in [models/rendering.py](models/rendering.py)
 2.  **Compose static dynamic also in image warping.**
 
 These modifications empirically produces better result on the `kid-running` scene, as shown below:
