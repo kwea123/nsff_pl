@@ -1,7 +1,5 @@
 import torch
 from einops import rearrange, reduce, repeat
-# for ray tracing object insertion
-import numpy as np
 from datasets import ray_utils
 
 # for frame interpolation
