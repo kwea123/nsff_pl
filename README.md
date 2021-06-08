@@ -121,3 +121,7 @@ python eval.py \
 
 1.  I add entropy loss as suggested [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields/issues/18#issuecomment-851038816). This allows the person to be "thin" and produces less artifact when the camera is far from the original pose.
 2.  I explicitly zero the flows of far regions to avoid the flow being trapped in local minima (reason explained [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields/issues/19#issuecomment-855958276)).
+
+# TODO
+- [ ] Add COLMAP reconstruction tutorial (mask out dynamic region).
+- [ ] Remove NSFF dependency for data preparation. More precisely, the original code needs quite a lot modifications to work on own data, and the depth/flow are calculated on resized images, which might reduce their accuracy.
