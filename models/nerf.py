@@ -207,8 +207,6 @@ class NeRF(nn.Module):
         transient_xyz_encoding_final = self.transient_xyz_encoding_final(xyz_)
         transient_sigma = self.transient_sigma(transient_xyz_encoding_final)
 
-        # transient_dir_encoding_input = torch.cat([transient_xyz_encoding_final, input_dir], 1)
-        # transient_dir_encoding = self.transient_dir_encoding(transient_dir_encoding_input)
         transient_rgb = self.transient_rgb(transient_xyz_encoding_final)
 
         transient_list = [transient_rgb, transient_sigma] # (B, 4)
