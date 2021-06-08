@@ -288,7 +288,8 @@ def render_rays(models,
                     reduce(_transient_weights_*xyz, 'n1 n2 c-> n1 c', 'sum')
                 results['transient_flow_fw'] = \
                     reduce(_transient_weights_*transient_flows_fw, 'n1 n2 c -> n1 c', 'sum')
-                results['transient_xyz_fw'] = results['transient_xyz_fine']+results['transient_flow_fw']
+                results['transient_xyz_fw'] = \
+                    results['transient_xyz_fine']+results['transient_flow_fw']
                 results['transient_flow_bw'] = \
                     reduce(_transient_weights_*transient_flows_bw, 'n1 n2 c -> n1 c', 'sum')
                 results['transient_xyz_bw'] = \
