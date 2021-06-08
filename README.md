@@ -105,7 +105,7 @@ The speed is measured on 1 RTX2080Ti.
 
 # :mag_right: Testing
 
-See [test.ipynb](test.ipynb) for scene reconstruction, scene decomposition, fix-time-change-view, ..., etc. You can get almost everything out of this notebook.
+See [test.ipynb](https://nbviewer.jupyter.org/github/kwea123/nsff_pl/blob/master/test.ipynb) for scene reconstruction, scene decomposition, fix-time-change-view, ..., etc. You can get almost everything out of this notebook.
 I will add more instructions inside in the future.
 
 Use [eval.py](eval.py) to create the whole sequence of moving views.
