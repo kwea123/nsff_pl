@@ -79,19 +79,19 @@ Our method also produces smoother depths, although it might not have direct impa
 
 # :key: Training
 
-## Data preparation
+## 0. Data preparation
 
 ~~The data preparation follows the original repo. Therefore, please follow [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields#video-preprocessing) to prepare the data (resized images, monodepth and flow) for training.~~ If your data format follows the original repo or use the `kid-running` sequence, please use [nsff_orig](https://github.com/kwea123/nsff_pl/tree/nsff_orig) branch.
 
-## COLMAP pose reconstruction
+## 1. Motion mask prediction and COLMAP pose reconstruction
 
 TODO
 
-## Monodepth and optical flow prediction
+## 2. Monodepth and optical flow prediction
 
 TODO
 
-## Train!
+## 3. Train!
 
 Run the following command:
 ```j
