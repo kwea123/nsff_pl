@@ -79,9 +79,21 @@ Our method also produces smoother depths, although it might not have direct impa
 
 # :key: Training
 
-~~The data preparation follows the original repo. Therefore, please follow [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields#video-preprocessing) to prepare the data (resized images, monodepth and flow) for training.~~
+## Data preparation
 
-After data preparation, run the following command:
+~~The data preparation follows the original repo. Therefore, please follow [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields#video-preprocessing) to prepare the data (resized images, monodepth and flow) for training.~~ If your data format follows the original repo or use the `kid-running` sequence, please use [nsff_orig](https://github.com/kwea123/nsff_pl/tree/nsff_orig) branch.
+
+## COLMAP pose reconstruction
+
+TODO
+
+## Monodepth and optical flow prediction
+
+TODO
+
+## Train!
+
+Run the following command:
 ```j
 python train.py \
   --dataset_name monocular --root_dir $ROOT_DIR \
@@ -89,7 +101,7 @@ python train.py \
   --N_samples 128 --N_importance 0 --encode_t \
   --num_epochs 50 --batch_size 512 \
   --optimizer adam --lr 5e-4 --lr_scheduler cosine \
-  --exp_name kid 
+  --exp_name exp 
 ```
 where `$ROOT_DIR` is where the data is located.
 
