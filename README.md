@@ -83,17 +83,143 @@ Our method also produces smoother depths, although it might not have direct impa
 
 ~~The data preparation follows the original repo. Therefore, please follow [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields#video-preprocessing) to prepare the data (resized images, monodepth and flow) for training.~~ If your data format follows the original repo or use the `kid-running` sequence, please use [nsff_orig](https://github.com/kwea123/nsff_pl/tree/nsff_orig) branch.
 
+Otherwise, create a root directory (e.g. `foobar`), create a folder named `images` and prepare your images under it, so the structure looks like:
+
+```bash
+└── foobar
+    └── images
+        ├── 00000.png
+        ...
+        └── 00029.png
+```
+
+Save the root directory as an environment variable to simplify the code in the following processes:
+```bash
+export ROOT_DIR=/path/to/foobar/
+```
+
+The image names can be arbitrary, but the lexical order should be the same as time order! E.g. you can name the images as `a.png`, `c.png`, `dd.png` but the time order must be `a -> c -> dd`.
+
 ## 1. Motion mask prediction and COLMAP pose reconstruction
 
-TODO
+### Motion mask prediction
+
+In order to correctly reconstruct the camera poses, we must first filter out the dynamic areas so that feature points in these areas are not matched during estimation.
+
+I use maskrcnn from [detectron2](https://github.com/facebookresearch/detectron2). Only semantic masks are used, as I find flow-based masks too noisy.
+
+Install detectron2 by `python -m pip install detectron2 -f https://dl.fbaipublicfiles.com/detectron2/wheels/cu102/torch1.8/index.html`.
+
+Modify the `DYNAMIC_CATEGORIES` variable in `third_party/predict_mask.py` to the dynamic classes in your data (only COCO classes are supported). Run `python third_party/predict_mask.py --root_dir $ROOT_DIR`. After that, your root directory will contain motion masks (0=dynamic and 1=static):
+
+```bash
+└── foobar
+    ├── images
+    │   ├── 00000.png
+    │   ...
+    │   └── 00029.png
+    └── masks
+        ├── 00000.png.png
+        ...
+        └── 00029.png.png
+```
+
+The masks need not be perfect, they can mask static regions, but most of the dynamic regions MUST lie inside the mask. If not, try lowering the `DETECTION_THR` or changing the `DYNAMIC_CATEGORIES`.
+
+### COLMAP pose reconstruction
+
+Please first install COLMAP following the [official tutorial](https://colmap.github.io/install.html).
+
+Here I only briefly explain how to reconstruct the poses using GUI. For command line usage, please search by yourself.
+
+1.  Run `colmap gui`.
+2.  Select the tab `Reconstruction -> Automatic reconstruction`.
+3.  Select "Workspace folder" as `foobar`, "Image folder" as `foobar/images`, "Mask folder" as `foobar/masks`.
+4.  Select "Data type" as "Video frames".
+5.  Check "Shared intrinsics" and uncheck "Dense model".
+6.  Press "Run".
+
+After reconstruction, you should see reconstructed camera poses as red quadrangular pyramids, and some reconstructed point clouds. Please roughly judge if the poses are correct (e.g. if your camera moves forward, but COLMAP reconstructs horizontal movements, then this is incorrect), if not, consider retake the photos.
+
+Now your root directory should look like:
+
+```bash
+└── foobar
+    ├── images
+    │   ├── 00000.png
+    │   ...
+    │   └── 00029.png
+    ├── masks
+    │   ├── 00000.png.png
+    │   ...
+    │   └── 00029.png.png
+    ├── database.db
+    └── sparse
+        └── 0
+            ├── cameras.bin
+            ├── images.bin
+            ├── points3D.bin
+            └── project.ini
+```
 
 ## 2. Monodepth and optical flow prediction
 
-TODO
+### Monodepth
+The instructions and code are borrowed from [BoostingMonocularDepth](https://github.com/compphoto/BoostingMonocularDepth).
+
+1.  Download the mergenet model weights from [here](https://sfu.ca/~yagiz/CVPR21/latest_net_G.pth) and put it in `third_party/depth/pix2pix/checkpoints/mergemodel/`.
+
+2.  Download the model weights from [MiDas-v2](https://github.com/intel-isl/MiDaS/tree/v2) and put it in `third_party/depth/midas/`.
+
+3.  From `thrid_party/depth`, run `python run.py --Final --data_dir $ROOT_DIR/images --output_dir $ROOT_DIR/disps --depthNet 0`
+
+It will create 16bit depth images under `$ROOT_DIR/disps`. This monodepth method is more accurate than most of the SOTA method, so it takes a few seconds to process each image.
+
+### RAFT
+The instructions and code are borrowed from [RAFT](https://github.com/princeton-vl/RAFT).
+
+1.  Download `raft-things.pth` from [google drive](https://drive.google.com/drive/folders/1sWDsfuZ3Up38EUQt7-JDTT1HcGHuJgvT) and put it in `third_party/flow/models/`.
+
+2.  From `third_party/flow/`, run `python demo.py --model models/raft-things.pth --path $ROOT_DIR`.
+
+Finally, your root directory will have all of this:
+
+```bash
+└── foobar
+    ├── images
+    │   ├── 00000.png
+    │   ...
+    │   └── 00029.png
+    ├── masks
+    │   ├── 00000.png.png
+    │   ...
+    │   └── 00029.png.png
+    ├── database.db
+    ├── sparse
+    │   └── 0
+    │       ├── cameras.bin
+    │       ├── images.bin
+    │       ├── points3D.bin
+    │       └── project.ini
+    ├── disps
+    │   ├── 00000.png
+    │   ...
+    │   └── 00029.png
+    ├── flow_fw
+    │   ├── 00000.flo
+    │   ...
+    │   └── 00028.flo
+    └── flow_bw
+        ├── 00001.flo
+        ...
+        └── 00029.flo
+```
+
+Now you can start training!
 
 ## 3. Train!
 
-Run the following command:
+Run the following command (modify the parameters according to `opt.py`):
 ```j
 python train.py \
   --dataset_name monocular --root_dir $ROOT_DIR \
@@ -101,12 +227,8 @@ python train.py \
   --N_samples 128 --N_importance 0 --encode_t \
   --num_epochs 50 --batch_size 512 \
   --optimizer adam --lr 5e-4 --lr_scheduler cosine \
-  --exp_name exp 
+  --exp_name exp
 ```
-where `$ROOT_DIR` is where the data is located.
-
-## Pretrained models and logs
-Download the pretrained models and training logs in [release](https://github.com/kwea123/nsff_pl/releases).
 
 ## Comparison with other repos
 
@@ -126,7 +248,7 @@ Use [eval.py](eval.py) to create the whole sequence of moving views.
 E.g.
 ```j
 python eval.py \
-  --dataset_name monocular --root_dir /home/ubuntu/data/nerf_example_data/my/kid-running/dense \
+  --dataset_name monocular --root_dir $ROOT_DIR \
   --N_samples 128 --N_importance 0 --img_wh 512 288 --start_end 0 30 \
   --encode_t --output_transient \
   --split test --video_format gif --fps 5 \
@@ -139,6 +261,6 @@ python eval.py \
 2.  I explicitly zero the flows of far regions to avoid the flow being trapped in local minima (reason explained [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields/issues/19#issuecomment-855958276)).
 
 # TODO
-- [ ] Add COLMAP reconstruction tutorial (mask out dynamic region).
-- [ ] Remove NSFF dependency for data preparation. More precisely, the original code needs quite a lot modifications to work on own data, and the depth/flow are calculated on resized images, which might reduce their accuracy.
+- [x] Add COLMAP reconstruction tutorial (mask out dynamic region).
+- [x] Remove NSFF dependency for data preparation. More precisely, the original code needs quite a lot modifications to work on own data, and the depth/flow are calculated on resized images, which might reduce their accuracy.
 - [ ] Exploit motion mask prior like https://free-view-video.github.io/

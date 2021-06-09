@@ -30,33 +30,58 @@ class MonocularDataset(Dataset):
         self.image_paths = \
             sorted(glob.glob(os.path.join(self.root_dir, 'images/*')))[self.start_frame:self.end_frame]
         self.disp_paths = \
-            sorted(glob.glob(os.path.join(self.root_dir, 'disp/*.npy')))[self.start_frame:self.end_frame]
+            sorted(glob.glob(os.path.join(self.root_dir, 'disps/*')))[self.start_frame:self.end_frame]
         self.mask_paths = \
-            sorted(glob.glob(os.path.join(self.root_dir, 'motion_masks/*')))[self.start_frame:self.end_frame]
+            sorted(glob.glob(os.path.join(self.root_dir, 'masks/*')))[self.start_frame:self.end_frame]
         self.flow_fw_paths = \
-            sorted(glob.glob(os.path.join(self.root_dir, 'flow_i1/*_fwd.npz')))[self.start_frame:self.end_frame] + ['dummy']
+            sorted(glob.glob(os.path.join(self.root_dir, 'flow_fw/*.flo')))[self.start_frame:self.end_frame] + ['dummy']
         self.flow_bw_paths = \
-            ['dummy'] + sorted(glob.glob(os.path.join(self.root_dir, 'flow_i1/*_bwd.npz')))[self.start_frame:self.end_frame]
+            ['dummy'] + sorted(glob.glob(os.path.join(self.root_dir, 'flow_bw/*.flo')))[self.start_frame:self.end_frame]
         self.N_frames = len(self.image_paths)
 
-        poses_bounds = np.load(os.path.join(self.root_dir, 'poses_bounds.npy'))
-        poses = poses_bounds[self.start_frame:self.end_frame, :15].reshape(-1, 3, 5) # (N_frames, 3, 5)
-        self.bounds = poses_bounds[self.start_frame:self.end_frame, -2:] # (N_frames, 2)
+        camdata = colmap_utils.read_cameras_binary(os.path.join(self.root_dir,
+                                                                'sparse/0/cameras.bin'))
+        H = camdata[1].height
+        W = camdata[1].width
+        f, cx, cy, _ = camdata[1].params
 
-        H, W, f = poses[0, :, -1]
-        self.K = np.array([[f, 0, W/2],
-                           [0, f, H/2],
-                           [0,  0,  1]], dtype=np.float32)
+        self.K = np.array([[f, 0, cx],
+                           [0, f, cy],
+                           [0,  0, 1]], dtype=np.float32)
         self.K[0] *= self.img_wh[0]/W
         self.K[1] *= self.img_wh[1]/H
 
-        poses = np.concatenate([poses[..., 1:2], -poses[..., :1], poses[..., 2:4]], -1) # (N_frames, 3, 4)
-        self.poses = colmap_utils.center_poses(poses)
+        # read extrinsics
+        imdata = colmap_utils.read_images_binary(os.path.join(self.root_dir,
+                                                              'sparse/0/images.bin'))
+        perm = np.argsort([imdata[k].name for k in imdata])
+        w2c_mats = []
+        bottom = np.array([0, 0, 0, 1.]).reshape(1, 4)
+        for k in imdata:
+            im = imdata[k]
+            R = im.qvec2rotmat()
+            t = im.tvec.reshape(3, 1)
+            w2c_mats += [np.concatenate([np.concatenate([R, t], 1), bottom], 0)]
+        w2c_mats = np.stack(w2c_mats, 0)[perm]
+        poses = np.linalg.inv(w2c_mats)[self.start_frame:self.end_frame, :3] # (N_images, 3, 4)
 
-        near_original = self.bounds.min()
-        scale_factor = np.percentile(self.bounds[:, 0], 5) * 0.9
-        self.bounds /= scale_factor
-        self.poses[..., 3] /= scale_factor
+        # read bounds
+        pts3d = colmap_utils.read_points3d_binary(os.path.join(self.root_dir,
+                                                               'sparse/0/points3D.bin'))
+        xyz_world = [pts3d[p_id].xyz for p_id in pts3d]
+        xyz_world = np.concatenate([np.array(xyz_world), np.ones((len(xyz_world), 1))], -1)
+        xyz_cam0 = (xyz_world @ w2c_mats[self.start_frame].T)[:, :3] # xyz in the first frame
+        xyz_cam0 = xyz_cam0[xyz_cam0[:, 2]>0]
+        self.nearest_depth = np.percentile(xyz_cam0[:, 2], 0.1)
+
+        # Step 2: correct poses
+        # change "right down front" of COLMAP to "right up back"
+        self.poses = np.concatenate([poses[..., 0:1], -poses[..., 1:3], poses[..., 3:4]], -1)
+        self.poses = colmap_utils.center_poses(self.poses)
+
+        # Step 3: correct scale
+        self.scale_factor = self.nearest_depth
+        self.poses[..., 3] /= self.scale_factor
 
         # create projection matrix, used to compute optical flow
         bottom = np.zeros((self.N_frames, 1, 4))
@@ -86,7 +111,7 @@ class MonocularDataset(Dataset):
                     if self.mask_paths:
                         mask = Image.open(self.mask_paths[i]).convert('L')
                         mask = mask.resize(self.img_wh, Image.NEAREST)
-                        mask = 1-self.transform(mask).flatten() # (h*w)
+                        mask = self.transform(mask).flatten() # (h*w)
                         self.rgbs_dict['static'][i] = img[mask>0]
                         self.rgbs_dict['dynamic'][i] = img[mask==0]
                     else:
@@ -101,7 +126,7 @@ class MonocularDataset(Dataset):
                     rays = [rays_o, rays_d, rays_t]
 
                     if self.disp_paths:
-                        disp = np.load(self.disp_paths[i])
+                        disp = cv2.imread(self.disp_paths[i], cv2.IMREAD_ANYDEPTH).astype(np.float32)
                         disp = cv2.resize(disp, self.img_wh, interpolation=cv2.INTER_NEAREST)
                         disp = torch.FloatTensor(disp).reshape(-1, 1) # (h*w, 1)
                         rays += [disp]
@@ -112,14 +137,14 @@ class MonocularDataset(Dataset):
 
                     if self.flow_fw_paths:
                         if i < self.N_frames-1:
-                            flow_fw = np.load(self.flow_fw_paths[i])['flow']
+                            flow_fw = flowlib.read_flow(self.flow_fw_paths[i])
                             flow_fw = flowlib.resize_flow(flow_fw, self.img_wh[0], self.img_wh[1])
                             flow_fw = torch.FloatTensor(flow_fw.reshape(-1, 2))
                         else:
                             flow_fw = torch.zeros(len(rays_o), 2)
 
                         if i >= 1:
-                            flow_bw = np.load(self.flow_bw_paths[i])['flow']
+                            flow_bw = flowlib.read_flow(self.flow_bw_paths[i])
                             flow_bw = flowlib.resize_flow(flow_bw, self.img_wh[0], self.img_wh[1])
                             flow_bw = torch.FloatTensor(flow_bw.reshape(-1, 2))
                         else:
@@ -253,24 +278,24 @@ class MonocularDataset(Dataset):
                 img = img.view(3, -1).T # (h*w, 3)
                 sample['rgbs'] = img
                 if self.disp_paths:
-                    disp = np.load(self.disp_paths[id_])
+                    disp = cv2.imread(self.disp_paths[id_], cv2.IMREAD_ANYDEPTH).astype(np.float32)
                     disp = cv2.resize(disp, self.img_wh, interpolation=cv2.INTER_NEAREST)
                     sample['disp'] = torch.FloatTensor(disp.flatten())
                 if self.mask_paths:
                     mask = Image.open(self.mask_paths[id_]).convert('L')
                     mask = mask.resize(self.img_wh, Image.NEAREST)
-                    mask = 1-self.transform(mask).flatten() # (h*w)
+                    mask = self.transform(mask).flatten() # (h*w)
                     sample['mask'] = mask
                 if self.flow_fw_paths:
                     if time < self.N_frames-1:
-                        flow_fw = np.load(self.flow_fw_paths[id_])['flow']
+                        flow_fw = flowlib.read_flow(self.flow_fw_paths[id_])
                         flow_fw = flowlib.resize_flow(flow_fw, self.img_wh[0], self.img_wh[1])
                         sample['flow_fw'] = flow_fw
                     else:
                         sample['flow_fw'] = torch.zeros(self.img_wh[1], self.img_wh[0], 2)
 
                     if time >= 1:
-                        flow_bw = np.load(self.flow_bw_paths[id_])['flow']
+                        flow_bw = flowlib.read_flow(self.flow_bw_paths[id_])
                         flow_bw = flowlib.resize_flow(flow_bw, self.img_wh[0], self.img_wh[1])
                         sample['flow_bw'] = flow_bw
                     else:
