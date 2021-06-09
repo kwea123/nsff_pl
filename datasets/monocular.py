@@ -177,9 +177,14 @@ class MonocularDataset(Dataset):
             self.val_id = self.N_frames//2
             print('val image is', self.image_paths[self.val_id])
 
-        else:
+        elif self.split == 'test':
             self.poses_test = self.poses.copy()
             self.image_paths_test = self.image_paths
+
+        elif self.split == 'test_spiral':
+            radii = np.percentile(np.abs(self.poses[..., 3]), 50, axis=0)
+            self.poses_test = colmap_utils.create_spiral_poses(
+                                self.poses, radii, n_poses=6*self.N_frames)
 
     def define_transforms(self):
         self.transform = T.ToTensor()
@@ -255,6 +260,7 @@ class MonocularDataset(Dataset):
             else:
                 c2w = torch.FloatTensor(self.poses_test[idx])
                 if self.split == 'test': time = idx
+                elif self.split == 'test_spiral': time = int(idx/len(self.poses_test)*self.N_frames)
                 else: time = 0
 
             directions = ray_utils.get_ray_directions(self.img_wh[1], self.img_wh[0], self.K)
@@ -269,36 +275,35 @@ class MonocularDataset(Dataset):
 
             sample = {'rays': rays, 'ts': rays_t, 'c2w': c2w}
 
-            if self.split in ['val', 'test']:
-                sample['cam_ids'] = 0
-                id_ = self.val_id if self.split == 'val' else idx
-                img = Image.open(self.image_paths[id_]).convert('RGB')
-                img = img.resize(self.img_wh, Image.LANCZOS)
-                img = self.transform(img) # (3, h, w)
-                img = img.view(3, -1).T # (h*w, 3)
-                sample['rgbs'] = img
-                if self.disp_paths:
-                    disp = cv2.imread(self.disp_paths[id_], cv2.IMREAD_ANYDEPTH).astype(np.float32)
-                    disp = cv2.resize(disp, self.img_wh, interpolation=cv2.INTER_NEAREST)
-                    sample['disp'] = torch.FloatTensor(disp.flatten())
-                if self.mask_paths:
-                    mask = Image.open(self.mask_paths[id_]).convert('L')
-                    mask = mask.resize(self.img_wh, Image.NEAREST)
-                    mask = self.transform(mask).flatten() # (h*w)
-                    sample['mask'] = mask
-                if self.flow_fw_paths:
-                    if time < self.N_frames-1:
-                        flow_fw = flowlib.read_flow(self.flow_fw_paths[id_])
-                        flow_fw = flowlib.resize_flow(flow_fw, self.img_wh[0], self.img_wh[1])
-                        sample['flow_fw'] = flow_fw
-                    else:
-                        sample['flow_fw'] = torch.zeros(self.img_wh[1], self.img_wh[0], 2)
+            sample['cam_ids'] = 0
+            id_ = self.val_id if self.split == 'val' else time
+            img = Image.open(self.image_paths[id_]).convert('RGB')
+            img = img.resize(self.img_wh, Image.LANCZOS)
+            img = self.transform(img) # (3, h, w)
+            img = img.view(3, -1).T # (h*w, 3)
+            sample['rgbs'] = img
+            if self.disp_paths:
+                disp = cv2.imread(self.disp_paths[id_], cv2.IMREAD_ANYDEPTH).astype(np.float32)
+                disp = cv2.resize(disp, self.img_wh, interpolation=cv2.INTER_NEAREST)
+                sample['disp'] = torch.FloatTensor(disp.flatten())
+            if self.mask_paths:
+                mask = Image.open(self.mask_paths[id_]).convert('L')
+                mask = mask.resize(self.img_wh, Image.NEAREST)
+                mask = self.transform(mask).flatten() # (h*w)
+                sample['mask'] = mask
+            if self.flow_fw_paths:
+                if time < self.N_frames-1:
+                    flow_fw = flowlib.read_flow(self.flow_fw_paths[id_])
+                    flow_fw = flowlib.resize_flow(flow_fw, self.img_wh[0], self.img_wh[1])
+                    sample['flow_fw'] = flow_fw
+                else:
+                    sample['flow_fw'] = torch.zeros(self.img_wh[1], self.img_wh[0], 2)
 
-                    if time >= 1:
-                        flow_bw = flowlib.read_flow(self.flow_bw_paths[id_])
-                        flow_bw = flowlib.resize_flow(flow_bw, self.img_wh[0], self.img_wh[1])
-                        sample['flow_bw'] = flow_bw
-                    else:
-                        sample['flow_bw'] = torch.zeros(self.img_wh[1], self.img_wh[0], 2)
+                if time >= 1:
+                    flow_bw = flowlib.read_flow(self.flow_bw_paths[id_])
+                    flow_bw = flowlib.resize_flow(flow_bw, self.img_wh[0], self.img_wh[1])
+                    sample['flow_bw'] = flow_bw
+                else:
+                    sample['flow_bw'] = torch.zeros(self.img_wh[1], self.img_wh[0], 2)
 
         return sample

@@ -1,7 +1,7 @@
 /.vscode
 results/
-ckpts/
-logs/
+ckpts*/
+logs*/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
