@@ -98,7 +98,7 @@ Download the pretrained models and training logs in [release](https://github.com
 
 ## Comparison with other repos
 
-|           | training GPU memory in GB (batchsize=512) | Speed (1 step) | Time to finish/final PSNR on kid-running |
+|           | training GPU memory in GB (batchsize=512) | speed (1 step) | training time/final PSNR on kid-running |
 | :---:     |  :---:     | :---:   | :---: |
 | [Original](https://github.com/zhengqili/Neural-Scene-Flow-Fields)  | 7.6 | **0.2s** | 96 GPUh / 30.45 |
 | This repo | **5.9** | **0.2s** | **12 GPUh / 35.02**
