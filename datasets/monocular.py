@@ -72,7 +72,7 @@ class MonocularDataset(Dataset):
         xyz_world = np.concatenate([np.array(xyz_world), np.ones((len(xyz_world), 1))], -1)
         xyz_cam0 = (xyz_world @ w2c_mats[self.start_frame].T)[:, :3] # xyz in the first frame
         xyz_cam0 = xyz_cam0[xyz_cam0[:, 2]>0]
-        self.nearest_depth = np.percentile(xyz_cam0[:, 2], 0.1)
+        self.nearest_depth = np.percentile(xyz_cam0[:, 2], 1) * 0.75
 
         # Step 2: correct poses
         # change "right down front" of COLMAP to "right up back"
