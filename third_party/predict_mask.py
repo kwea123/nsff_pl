@@ -61,4 +61,4 @@ if __name__ == '__main__':
 
         # enlarge the mask a little to account for inaccurate boundaries
         motion_mask = cv2.erode(motion_mask, np.ones((15, 15), np.uint8), iterations=1)
-        cv2.imwrite(img_p.replace('images', 'masks'), motion_mask)
+        cv2.imwrite(img_p.replace('images', 'masks')+'.png', motion_mask)
