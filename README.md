@@ -86,7 +86,7 @@ Our method also produces smoother depths, although it might not have direct impa
 
 ~~The data preparation follows the original repo. Therefore, please follow [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields#video-preprocessing) to prepare the data (resized images, monodepth and flow) for training.~~ If your data format follows the original repo or use the `kid-running` sequence, please use [nsff_orig](https://github.com/kwea123/nsff_pl/tree/nsff_orig) branch.
 
-Otherwise, create a root directory (e.g. `foobar`), create a folder named `images` and prepare your images under it, so the structure looks like:
+Otherwise, create a root directory (e.g. `foobar`), create a folder named `images` and prepare your images (it is recommended to have at least 30 images) under it, so the structure looks like:
 
 ```bash
 └── foobar
