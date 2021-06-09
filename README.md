@@ -42,6 +42,8 @@ These modifications empirically produces better result on the `kid-running` scen
   <sup>Left: this repo. Right: pretrained model of the original repo.</sup>
 </p>
 
+### Novel view synthesis (spiral)
+
 The color of our method is more vivid and closer to the GT images both qualitatively and quantitatively (not because of gif compression). Also, the background is more stable and cleaner.
 
 ### Bonus - Depth
