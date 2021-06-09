@@ -79,7 +79,7 @@ Our method also produces smoother depths, although it might not have direct impa
 
 # :key: Training
 
-The data preparation follows the original repo. Therefore, please follow [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields#video-preprocessing) to prepare the data (resized images, monodepth and flow) for training.
+~~The data preparation follows the original repo. Therefore, please follow [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields#video-preprocessing) to prepare the data (resized images, monodepth and flow) for training.~~
 
 After data preparation, run the following command:
 ```j
