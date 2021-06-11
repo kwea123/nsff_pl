@@ -101,7 +101,7 @@ Save the root directory as an environment variable to simplify the code in the f
 export ROOT_DIR=/path/to/foobar/
 ```
 
-The image names can be arbitrary, but the lexical order should be the same as time order! E.g. you can name the images as `a.png`, `c.png`, `dd.png` but the time order must be `a -> c -> dd`.
+The image names can be arbitrary, but the lexical order should be the same as time order! E.g. you can name the images as `a.png`, `c.png`, `dd.png` but the time order must be `a -> c -> dd`. Only one constraint: **do not** put the string "images" in the image name! e.g. `images001.png` is ❎!
 
 ## 1. Motion mask prediction and COLMAP pose reconstruction
 
