@@ -168,15 +168,13 @@ Now your root directory should look like:
 ## 2. Monodepth and optical flow prediction
 
 ### Monodepth
-The instructions and code are borrowed from [BoostingMonocularDepth](https://github.com/compphoto/BoostingMonocularDepth).
+The instructions and code are borrowed from [DPT](https://github.com/intel-isl/DPT).
 
-1.  Download the mergenet model weights from [here](https://sfu.ca/~yagiz/CVPR21/latest_net_G.pth) and put it in `third_party/depth/pix2pix/checkpoints/mergemodel/`.
+1.  Download the model weights from [here](https://github.com/intel-isl/DPT/releases/download/1_0/dpt_large-midas-2f21e586.pt) and put it in `third_party/depth/weights/`.
 
-2.  Download the model weights from [MiDas-v2](https://github.com/intel-isl/MiDaS/tree/v2) and put it in `third_party/depth/midas/`.
+2.  From `thrid_party/depth`, run `python run_monodepth.py -i $ROOT_DIR/images -o $ROOT_DIR/disps -t dpt_large`
 
-3.  From `thrid_party/depth`, run `python run.py --Final --data_dir $ROOT_DIR/images --output_dir $ROOT_DIR/disps --depthNet 0`
-
-It will create 16bit depth images under `$ROOT_DIR/disps`. This monodepth method is more accurate than most of the SOTA method, so it takes a few seconds to process each image.
+It will create 16bit depth images under `$ROOT_DIR/disps`.
 
 ### RAFT
 The instructions and code are borrowed from [RAFT](https://github.com/princeton-vl/RAFT).
