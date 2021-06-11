@@ -136,7 +136,6 @@ def render_rays(models,
             rgb_map_w = static_rgb_map_w + transient_rgb_map_w
             return rgb_map_w, transient_flows_
 
-
         typ = model.typ
         results[f'zs_{typ}'] = zs
         results[f'xyzs_{typ}'] = xyz
@@ -175,10 +174,10 @@ def render_rays(models,
             out = torch.cat(out_chunks, 0)
             out = rearrange(out, '(n1 n2) c -> n1 n2 c', n1=N_rays, n2=N_samples_)
             results[f'static_rgbs_{typ}'] = static_rgbs = out[..., :3]
-            results[f'static_sigmas_{typ}'] = static_sigmas = out[..., 3]
+            static_sigmas = out[..., 3]
             if output_transient:
                 results[f'transient_rgbs_{typ}'] = transient_rgbs = out[..., 4:7]
-                results[f'transient_sigmas_{typ}'] = transient_sigmas = out[..., 7]
+                transient_sigmas = out[..., 7]
                 if output_transient_flow: # only [] or ['fw', 'bw'] or ['fw', 'bw', 'disocc'] !
                     results['transient_flows_fw'] = transient_flows_fw = out[..., 8:11]
                     results['transient_flows_bw'] = transient_flows_bw = out[..., 11:14]
@@ -205,12 +204,14 @@ def render_rays(models,
         deltas = torch.cat([deltas, delta_inf], -1)
 
         noise = torch.randn_like(static_sigmas) * noise_std
-        alphas = 1-torch.exp(-deltas*act(static_sigmas+noise))
+        results[f'static_sigmas_{typ}'] = static_sigmas = act(static_sigmas+noise)
+        alphas = 1-torch.exp(-deltas*static_sigmas)
 
         if output_transient:
             static_alphas = alphas
             noise = torch.randn_like(transient_sigmas) * noise_std
-            transient_alphas = 1-torch.exp(-deltas*act(transient_sigmas+noise))
+            results[f'transient_sigmas_{typ}'] = transient_sigmas = act(transient_sigmas+noise)
+            transient_alphas = 1-torch.exp(-deltas*transient_sigmas)
             alphas = 1-(1-static_alphas)*(1-transient_alphas)
 
             if (not test_time) and output_transient_flow: # render with flowed-xyzs
@@ -243,15 +244,14 @@ def render_rays(models,
         if output_transient:
             results[f'static_weights_{typ}'] = static_weights
             results[f'transient_weights_{typ}'] = transient_weights
-        else:
-            results[f'static_weights_{typ}'] = weights
+            results[f'weights_{typ}'] = weights
+        else: results[f'static_weights_{typ}'] = weights
         if test_time:
             results[f'xyz_{typ}'] = reduce(weights_*xyz, 'n1 n2 c -> n1 c', 'sum')
             if output_transient:
                 results[f'static_alphas_{typ}'] = static_alphas
                 results[f'transient_alphas_{typ}'] = transient_alphas
-            else:
-                results[f'static_alphas_{typ}'] = alphas
+            else: results[f'static_alphas_{typ}'] = alphas
             if typ == 'coarse':
                 return
 
