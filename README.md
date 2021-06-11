@@ -265,5 +265,5 @@ python eval.py \
 - [x] Add COLMAP reconstruction tutorial (mask out dynamic region).
 - [x] Remove NSFF dependency for data preparation. More precisely, the original code needs quite a lot modifications to work on own data, and the depth/flow are calculated on resized images, which might reduce their accuracy.
 - [x] Add spiral path for testing.
-- [ ] Add mask hard mining at the beginning of training.
+- [ ] Add mask hard mining at the beginning of training. Or prioritized experience replay.
 - [ ] Exploit motion mask prior like https://free-view-video.github.io/
