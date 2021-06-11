@@ -49,7 +49,8 @@ class VocabEmbedding(nn.Module):
 class NeRF(nn.Module):
     def __init__(self, typ,
                  D=8, W=256, skips=[4],
-                 in_channels_xyz=63, in_channels_dir=27,
+                 in_channels_xyz=63, 
+                 use_viewdir=True, in_channels_dir=27,
                  encode_appearance=False, in_channels_a=48,
                  encode_transient=False, in_channels_t=16,
                  output_flow=False, flow_scale=0.2):
@@ -59,6 +60,7 @@ class NeRF(nn.Module):
         W: number of hidden units in each layer
         skips: add skip connection in the Dth layer
         in_channels_xyz: number of input channels for xyz (3+3*10*2=63 by default)
+        use_viewdir: whether to use view dependency for static network
         in_channels_dir: number of input channels for direction (3+3*4*2=27 by default)
 
         ---Parameters for NeRF-W (transient is used in fine model only as per section 4.3)---
@@ -75,6 +77,7 @@ class NeRF(nn.Module):
         self.W = W
         self.skips = skips
         self.in_channels_xyz = in_channels_xyz
+        self.use_viewdir = use_viewdir
         self.in_channels_dir = in_channels_dir
 
         self.encode_appearance = False if typ=='coarse' else encode_appearance
@@ -95,13 +98,13 @@ class NeRF(nn.Module):
             setattr(self, f"static_xyz_encoding_{i+1}", layer)
         self.static_xyz_encoding_final = nn.Linear(W, W)
 
-        # direction encoding layers
-        self.static_dir_encoding = nn.Sequential(
-                        nn.Linear(W+in_channels_dir+self.in_channels_a, W//2), nn.ReLU(True))
+        if self.use_viewdir:
+            self.static_dir_encoding = nn.Sequential(
+                        nn.Linear(W+in_channels_dir+self.in_channels_a, W), nn.ReLU(True))
 
         # static output layers
         self.static_sigma = nn.Linear(W, 1)
-        self.static_rgb = nn.Sequential(nn.Linear(W//2, 3), nn.Sigmoid())
+        self.static_rgb = nn.Sequential(nn.Linear(W, 3), nn.Sigmoid())
 
         if self.encode_transient:
             for i in range(D):
@@ -190,10 +193,11 @@ class NeRF(nn.Module):
                 transient_sigma = self.transient_sigma(transient_xyz_encoding_final)
                 return torch.cat([static_sigma, transient_sigma], 1)
 
-            xyz_encoding_final = self.static_xyz_encoding_final(xyz_)
-            dir_encoding_input = torch.cat([xyz_encoding_final, input_dir, input_a], 1)
-            dir_encoding = self.static_dir_encoding(dir_encoding_input)
-            static_rgb = self.static_rgb(dir_encoding) # (B, 3)
+            feat_final = self.static_xyz_encoding_final(xyz_)
+            if self.use_viewdir:
+                dir_encoding_input = torch.cat([feat_final, input_dir, input_a], 1)
+                feat_final = self.static_dir_encoding(dir_encoding_input)
+            static_rgb = self.static_rgb(feat_final) # (B, 3)
             static = torch.cat([static_rgb, static_sigma], 1) # (B, 4)
 
             if not output_transient:

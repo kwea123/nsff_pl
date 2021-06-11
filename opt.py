@@ -18,6 +18,8 @@ def get_opts():
                         help='Form batch from rays of the same image. Used with monodepth supervision')
 
     # original NeRF parameters
+    parser.add_argument('--use_viewdir', default=False, action="store_true",
+                        help='whether to use view dependency in static network')
     parser.add_argument('--N_samples', type=int, default=128,
                         help='number of coarse samples')
     parser.add_argument('--N_importance', type=int, default=0,

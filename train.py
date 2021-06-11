@@ -56,27 +56,30 @@ class NeRFSystem(LightningModule):
 
         # fine model always exists
         self.nerf_fine = NeRF(typ='fine',
-                                in_channels_xyz=6*hparams.N_emb_xyz+3,
-                                in_channels_dir=6*hparams.N_emb_dir+3,
-                                encode_appearance=hparams.encode_a,
-                                in_channels_a=hparams.N_a,
-                                encode_transient=hparams.encode_t,
-                                in_channels_t=hparams.N_tau,
-                                output_flow=len(self.output_transient_flow)>0,
-                                flow_scale=hparams.flow_scale)
+                              in_channels_xyz=6*hparams.N_emb_xyz+3,
+                              use_viewdir=hparams.use_viewdir,
+                              in_channels_dir=6*hparams.N_emb_dir+3,
+                              encode_appearance=hparams.encode_a,
+                              in_channels_a=hparams.N_a,
+                              encode_transient=hparams.encode_t,
+                              in_channels_t=hparams.N_tau,
+                              output_flow=len(self.output_transient_flow)>0,
+                              flow_scale=hparams.flow_scale)
         self.models = {'fine': self.nerf_fine}
         load_ckpt(self.nerf_fine, hparams.weight_path,
                   'nerf_fine', hparams.prefixes_to_ignore)
 
         if hparams.N_importance > 0: # coarse to fine
-            self.nerf_coarse = NeRF(typ='coarse',
-                                    in_channels_xyz=6*hparams.N_emb_xyz+3,
-                                    in_channels_dir=6*hparams.N_emb_dir+3,
-                                    encode_transient=hparams.encode_t,
-                                    in_channels_t=hparams.N_tau)
-            self.models['coarse'] = self.nerf_coarse
-            load_ckpt(self.nerf_coarse, hparams.weight_path,
-                    'nerf_coarse', hparams.prefixes_to_ignore)
+            raise ValueError("coarse to fine is not ready now! please set N_importance to 0!")
+            # self.nerf_coarse = NeRF(typ='coarse',
+            #                         in_channels_xyz=6*hparams.N_emb_xyz+3,
+            #                         use_viewdir=hparams.use_viewdir,
+            #                         in_channels_dir=6*hparams.N_emb_dir+3,
+            #                         encode_transient=hparams.encode_t,
+            #                         in_channels_t=hparams.N_tau)
+            # self.models['coarse'] = self.nerf_coarse
+            # load_ckpt(self.nerf_coarse, hparams.weight_path,
+            #         'nerf_coarse', hparams.prefixes_to_ignore)
 
         self.models_to_train = [self.models]
         if hparams.encode_a: self.models_to_train += [self.embedding_a]
@@ -138,7 +141,8 @@ class NeRFSystem(LightningModule):
 
     def train_dataloader(self):
         self.train_dataset.output_transient_flow = self.output_transient_flow
-        self.train_dataset.get_data(self.output_transient)
+        # self.train_dataset.get_data(self.output_transient)
+        self.train_dataset.subsample = self.current_epoch>=10
         self.train_dataset.batch_from_same_image = self.hparams.batch_from_same_image
         self.train_dataset.batch_size = self.hparams.batch_size
 
@@ -167,8 +171,8 @@ class NeRFSystem(LightningModule):
                           pin_memory=True)
 
     def on_train_epoch_start(self):
-        self.loss.lambda_geo_d = self.hparams.lambda_geo_init * 0.5**(self.current_epoch//10)
-        self.loss.lambda_geo_f = self.hparams.lambda_geo_init * 0.5**(self.current_epoch//10)
+        self.loss.lambda_geo_d = self.hparams.lambda_geo_init * 0.25**(self.current_epoch//10)
+        self.loss.lambda_geo_f = self.hparams.lambda_geo_init * 0.25**(self.current_epoch//10)
 
     def training_step(self, batch, batch_nb):
         rays, rgbs, ts = batch['rays'], batch['rgbs'], batch.get('ts', None)
@@ -215,7 +219,8 @@ class NeRFSystem(LightningModule):
             self.logger.experiment.add_image('val/grid', img_grid, self.global_step)
 
         log = {'val_psnr': psnr(results['rgb_fine'], rgbs)}
-        if self.output_transient: log['val_psnr_mask'] = psnr(results['rgb_fine'], rgbs, mask==0)
+        if self.output_transient and (mask==0).any():
+            log['val_psnr_mask'] = psnr(results['rgb_fine'], rgbs, mask==0)
 
         return log
 
