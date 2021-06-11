@@ -219,13 +219,24 @@ class MonocularDataset(Dataset):
             if self.batch_from_same_image: # random rays from the same image
                 t = np.random.choice(self.N_frames)
                 if self.mask_paths:
-                    rand_idx = np.random.choice(len(self.rays_dict['static'][t])+
-                                                len(self.rays_dict['dynamic'][t]),
-                                                self.batch_size)
-                    rays = torch.cat([self.rays_dict['static'][t],
-                                      self.rays_dict['dynamic'][t]], 0)[rand_idx]
-                    rgbs = torch.cat([self.rgbs_dict['static'][t],
-                                      self.rgbs_dict['dynamic'][t]], 0)[rand_idx]
+                    if not self.subsample:
+                        rand_idx = np.random.choice(len(self.rays_dict['static'][t])+
+                                                    len(self.rays_dict['dynamic'][t]),
+                                                    self.batch_size)
+                        rays = torch.cat([self.rays_dict['static'][t],
+                                        self.rays_dict['dynamic'][t]], 0)[rand_idx]
+                        rgbs = torch.cat([self.rgbs_dict['static'][t],
+                                        self.rgbs_dict['dynamic'][t]], 0)[rand_idx]
+                    else:
+                        static_samples = int(self.batch_size*0.2)
+                        static_rand_idx = \
+                            np.random.choice(len(self.rays_dict['static'][t]), static_samples)
+                        dynamic_rand_idx = \
+                            np.random.choice(len(self.rays_dict['dynamic'][t]), self.batch_size-static_samples)
+                        rays = torch.cat([self.rays_dict['static'][t][static_rand_idx],
+                                        self.rays_dict['dynamic'][t][dynamic_rand_idx]], 0)
+                        rgbs = torch.cat([self.rgbs_dict['static'][t][static_rand_idx],
+                                        self.rgbs_dict['dynamic'][t][dynamic_rand_idx]], 0)
                 else:
                     rand_idx = np.random.choice(self.img_wh[0]*self.img_wh[1], self.batch_size)
                     rays = self.rays_dict['static'][t][rand_idx]
