@@ -48,39 +48,32 @@ class NeRFWLoss(nn.Module):
     """
     def __init__(self,
                  lambda_geo=0.04, lambda_reg=0.1,
+                 flow_thr=1e-2,
                  topk=1.0):
         super().__init__()
         self.lambda_geo_d = self.lambda_geo_f = lambda_geo
         self.lambda_reg = lambda_reg
+        self.flow_thr = flow_thr
         self.lambda_ent = 1e-3
 
         self.topk = topk
 
-        # self.Ks (18, 3, 3) and
-        # self.Ps (world to image projection matrices) (18, N_frames, 3, 4) and
+        # self.Ks (1, 3, 3) and
+        # self.Ps (world to image projection matrices) (1, N_frames, 3, 4) and
         # self.max_t (N_frames-1)
         # are registered as buffers in train.py !
 
     def forward(self, inputs, targets, **kwargs):
         ret = {}
         ret['col_l'] = (inputs['rgb_fine']-targets['rgbs'])**2
-        if 'rgb_coarse' in inputs:
-            ret['col_l'] += (inputs['rgb_coarse']-targets['rgbs'])**2
 
         f_d_l = shiftscale_invariant_depthloss(inputs['depth_fine'], targets['disps'])
         ret['disp_l'] = self.lambda_geo_d * f_d_l
-        if 'depth_coarse' in inputs:
-            c_d_l = shiftscale_invariant_depthloss(inputs['depth_coarse'], targets['disps'])
-            ret['disp_l'] += self.lambda_geo_d * c_d_l
 
-        if kwargs['output_transient_flow']: # flow losses
+        if kwargs['output_transient_flow']:
             ret['entropy_l'] = self.lambda_ent * \
                 torch.sum(-inputs['transient_weights_fine']*
-                          torch.log(inputs['transient_weights_fine']+1e-8), -1)
-            if 'weights_coarse' in inputs:
-                ret['entropy_l'] += self.lambda_ent * \
-                    torch.sum(-inputs['transient_weights_coarse']*
-                              torch.log(inputs['transient_weights_coarse']+1e-8), -1)
+                          torch.log(inputs['transient_weights_fine']+1e-8), -1).mean()
 
             Ks = self.Ks[targets['cam_ids']] # (N_rays, 3, 3)
             xyz_fw_w = ray_utils.ndc2world(inputs['transient_xyz_fw'], Ks) # (N_rays, 3)
