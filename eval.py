@@ -36,6 +36,8 @@ def get_opts():
     parser.add_argument('--start_end', nargs="+", type=int, default=[0, -1],
                         help='start frame and end frame')
 
+    parser.add_argument('--use_viewdir', default=False, action="store_true",
+                        help='whether to use view dependency in static network')
     parser.add_argument('--N_samples', type=int, default=64,
                         help='number of coarse samples')
     parser.add_argument('--N_importance', type=int, default=128,
@@ -143,6 +145,7 @@ if __name__ == "__main__":
         load_ckpt(embedding_t, args.ckpt_path, 'embedding_t')
 
     nerf_fine = NeRF(typ='fine',
+                     use_viewdir=args.use_viewdir,
                      encode_appearance=args.encode_a,
                      in_channels_a=args.N_a,
                      encode_transient=args.encode_t,
@@ -152,6 +155,7 @@ if __name__ == "__main__":
     models = {'fine': nerf_fine}
     if args.N_importance > 0:
         nerf_coarse = NeRF(typ='coarse',
+                           use_viewdir=args.use_viewdir,
                            encode_transient=args.encode_t,
                            in_channels_t=args.N_tau).cuda()
         load_ckpt(nerf_coarse, args.ckpt_path, model_name='nerf_coarse')
