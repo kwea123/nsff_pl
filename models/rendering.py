@@ -136,7 +136,6 @@ def render_rays(models,
             rgb_map_w = static_rgb_map_w + transient_rgb_map_w
             return rgb_map_w, transient_flows_
 
-
         typ = model.typ
         results[f'zs_{typ}'] = zs
         results[f'xyzs_{typ}'] = xyz
@@ -175,10 +174,10 @@ def render_rays(models,
             out = torch.cat(out_chunks, 0)
             out = rearrange(out, '(n1 n2) c -> n1 n2 c', n1=N_rays, n2=N_samples_)
             results[f'static_rgbs_{typ}'] = static_rgbs = out[..., :3]
-            results[f'static_sigmas_{typ}'] = static_sigmas = out[..., 3]
+            static_sigmas = out[..., 3]
             if output_transient:
                 results[f'transient_rgbs_{typ}'] = transient_rgbs = out[..., 4:7]
-                results[f'transient_sigmas_{typ}'] = transient_sigmas = out[..., 7]
+                transient_sigmas = out[..., 7]
                 if output_transient_flow: # only [] or ['fw', 'bw'] or ['fw', 'bw', 'disocc'] !
                     results['transient_flows_fw'] = transient_flows_fw = out[..., 8:11]
                     results['transient_flows_bw'] = transient_flows_bw = out[..., 11:14]
@@ -205,12 +204,14 @@ def render_rays(models,
         deltas = torch.cat([deltas, delta_inf], -1)
 
         noise = torch.randn_like(static_sigmas) * noise_std
-        alphas = 1-torch.exp(-deltas*act(static_sigmas+noise))
+        results[f'static_sigmas_{typ}'] = static_sigmas = act(static_sigmas+noise)
+        alphas = 1-torch.exp(-deltas*static_sigmas)
 
         if output_transient:
             static_alphas = alphas
             noise = torch.randn_like(transient_sigmas) * noise_std
-            transient_alphas = 1-torch.exp(-deltas*act(transient_sigmas+noise))
+            results[f'transient_sigmas_{typ}'] = transient_sigmas = act(transient_sigmas+noise)
+            transient_alphas = 1-torch.exp(-deltas*transient_sigmas)
             alphas = 1-(1-static_alphas)*(1-transient_alphas)
 
             if (not test_time) and output_transient_flow: # render with flowed-xyzs
@@ -243,24 +244,22 @@ def render_rays(models,
         if output_transient:
             results[f'static_weights_{typ}'] = static_weights
             results[f'transient_weights_{typ}'] = transient_weights
-        else:
-            results[f'static_weights_{typ}'] = weights
+            results[f'weights_{typ}'] = weights
+        else: results[f'static_weights_{typ}'] = weights
         if test_time:
             results[f'xyz_{typ}'] = reduce(weights_*xyz, 'n1 n2 c -> n1 c', 'sum')
             if output_transient:
                 results[f'static_alphas_{typ}'] = static_alphas
                 results[f'transient_alphas_{typ}'] = transient_alphas
-            else:
-                results[f'static_alphas_{typ}'] = alphas
+            else: results[f'static_alphas_{typ}'] = alphas
             if typ == 'coarse':
                 return
 
         if output_transient:
             static_rgb_map = reduce(rearrange(static_weights, 'n1 n2 -> n1 n2 1')*static_rgbs,
                                     'n1 n2 c -> n1 c', 'sum')
-            transient_rgb_map = \
-                reduce(rearrange(transient_weights, 'n1 n2 -> n1 n2 1')*transient_rgbs,
-                       'n1 n2 c -> n1 c', 'sum')
+            transient_weights_ = rearrange(transient_weights, 'n1 n2 -> n1 n2 1')
+            transient_rgb_map = reduce(transient_weights_*transient_rgbs, 'n1 n2 c -> n1 c', 'sum')
             results[f'rgb_{typ}'] = static_rgb_map + transient_rgb_map
             results[f'transient_alpha_{typ}'] = reduce(transient_weights, 'n1 n2 -> n1', 'sum')
 
@@ -278,24 +277,13 @@ def render_rays(models,
                 reduce(_static_weights*zs, 'n1 n2 -> n1', 'sum')
 
             if output_transient_flow:
-                # compute transient weight when it exists solely.
-                transient_alphas_shifted = \
-                    torch.cat([torch.ones_like(transient_alphas[:, :1]), 1-transient_alphas], -1)
-                transient_transmittance = torch.cumprod(transient_alphas_shifted[:, :-1], -1)
-                _transient_weights = transient_alphas * transient_transmittance
-                _transient_weights_ = rearrange(_transient_weights, 'n1 n2 -> n1 n2 1')
-                results['transient_xyz_fine'] = \
-                    reduce(_transient_weights_*xyz, 'n1 n2 c-> n1 c', 'sum')
+                results['xyz_fine'] = reduce(weights_*xyz, 'n1 n2 c-> n1 c', 'sum')
                 results['transient_flow_fw'] = \
-                    reduce(_transient_weights_*transient_flows_fw, 'n1 n2 c -> n1 c', 'sum')
-                results['transient_xyz_fw'] = \
-                    results['transient_xyz_fine']+results['transient_flow_fw']
+                    reduce(transient_weights_*transient_flows_fw, 'n1 n2 c -> n1 c', 'sum')
+                results['xyz_fw'] = results['xyz_fine']+results['transient_flow_fw']
                 results['transient_flow_bw'] = \
-                    reduce(_transient_weights_*transient_flows_bw, 'n1 n2 c -> n1 c', 'sum')
-                results['transient_xyz_bw'] = \
-                    results['transient_xyz_fine']+results['transient_flow_bw']
-                results['_transient_depth_fine'] = \
-                    reduce(_transient_weights*zs, 'n1 n2 -> n1', 'sum')
+                    reduce(transient_weights_*transient_flows_bw, 'n1 n2 c -> n1 c', 'sum')
+                results['xyz_bw'] = results['xyz_fine']+results['transient_flow_bw']
 
                 if 'disocc' in output_transient_flow:
                     results['transient_disocc_fw'] = \
@@ -333,6 +321,7 @@ def render_rays(models,
     # coarse sample depths (same for static and transient)
     zs = torch.linspace(0, 1, N_samples, device=rays.device).expand(N_rays, N_samples)
     zs_mid = 0.5 * (zs[: ,:-1]+zs[: ,1:]) # (N_rays, N_samples-1) interval mid points
+    z_far = 0.95 # explicitly zero the transient sigma and flow if z exceeds this value
     
     if perturb > 0: # perturb sample depths
         # get intervals between samples
@@ -375,7 +364,6 @@ def render_rays(models,
             t_embedded = kwargs['t_embedded'] if 't_embedded' in kwargs else embeddings['t'](ts)
     output_transient_flow = \
         [] if not output_transient else kwargs.get('output_transient_flow', [])
-    if output_transient_flow: z_far = 0.95 # explicitly zero the flow if z exceeds this value
     xyz_fine = rays_o + rays_d * rearrange(zs, 'n1 n2 -> n1 n2 1')
     inference(results, model, xyz_fine, zs, test_time, **kwargs)
 

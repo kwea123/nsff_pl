@@ -14,10 +14,10 @@ def get_opts():
                         help='resolution (img_w, img_h) of the image')
     parser.add_argument('--start_end', nargs='+', type=int, default=[0, 100],
                         help='start and end frames')
-    parser.add_argument('--batch_from_same_image', default=False, action="store_true",
-                        help='Form batch from rays of the same image. Used with monodepth supervision')
 
     # original NeRF parameters
+    parser.add_argument('--use_viewdir', default=False, action="store_true",
+                        help='whether to use view dependency in static network')
     parser.add_argument('--N_samples', type=int, default=128,
                         help='number of coarse samples')
     parser.add_argument('--N_importance', type=int, default=0,
@@ -58,6 +58,8 @@ def get_opts():
                         help='chunk size to split the input to avoid OOM')
     parser.add_argument('--num_epochs', type=int, default=16,
                         help='number of training epochs')
+    parser.add_argument('--prioritized_replay', default=False, action="store_true",
+                        help='sample hard rays more according to prioritized experience replay')
 
     parser.add_argument('--num_gpus', type=int, default=1,
                         help='number of gpus')

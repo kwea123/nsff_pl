@@ -82,30 +82,23 @@ Our method also produces smoother depths, although it might not have direct impa
 
 # :key: Training
 
-## 0. Data preparation
+## Data preparation
 
 ~~The data preparation follows the original repo. Therefore, please follow [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields#video-preprocessing) to prepare the data (resized images, monodepth and flow) for training.~~ If your data format follows the original repo or use the `kid-running` sequence, please use [nsff_orig](https://github.com/kwea123/nsff_pl/tree/nsff_orig) branch.
 
-Otherwise, create a root directory (e.g. `foobar`), create a folder named `images` and prepare your images (it is recommended to have at least 30 images) under it, so the structure looks like:
+Otherwise, create a root directory (e.g. `foobar`), create a folder named `frames` and prepare your images (it is recommended to have at least 30 images) under it, so the structure looks like:
 
 ```bash
 └── foobar
-    └── images
+    └── frames
         ├── 00000.png
         ...
         └── 00029.png
 ```
 
-Save the root directory as an environment variable to simplify the code in the following processes:
-```bash
-export ROOT_DIR=/path/to/foobar/
-```
+The image names can be arbitrary, but the lexical order should be the same as time order! E.g. you can name the images as `a.png`, `c.png`, `dd.png` but the time order must be `a -> c -> dd`.
 
-The image names can be arbitrary, but the lexical order should be the same as time order! E.g. you can name the images as `a.png`, `c.png`, `dd.png` but the time order must be `a -> c -> dd`. Only one constraint: **do not** put the string "images" in the image name! e.g. `images001.png` is ❎!
-
-## 1. Motion mask prediction and COLMAP pose reconstruction
-
-### Motion mask prediction
+### Motion Mask
 
 In order to correctly reconstruct the camera poses, we must first filter out the dynamic areas so that feature points in these areas are not matched during estimation.
 
@@ -113,85 +106,42 @@ I use maskrcnn from [detectron2](https://github.com/facebookresearch/detectron2)
 
 Install detectron2 by `python -m pip install detectron2 -f https://dl.fbaipublicfiles.com/detectron2/wheels/cu102/torch1.8/index.html`.
 
-Modify the `DYNAMIC_CATEGORIES` variable in `third_party/predict_mask.py` to the dynamic classes in your data (only COCO classes are supported). Run `python third_party/predict_mask.py --root_dir $ROOT_DIR`. After that, your root directory will contain motion masks (0=dynamic and 1=static):
+Modify the `DYNAMIC_CATEGORIES` variable in `third_party/predict_mask.py` to the dynamic classes in your data (only COCO classes are supported).
 
-```bash
-└── foobar
-    ├── images
-    │   ├── 00000.png
-    │   ...
-    │   └── 00029.png
-    └── masks
-        ├── 00000.png.png
-        ...
-        └── 00029.png.png
-```
-
-The masks need not be perfect, they can mask static regions, but most of the dynamic regions MUST lie inside the mask. If not, try lowering the `DETECTION_THR` or changing the `DYNAMIC_CATEGORIES`.
-
-### COLMAP pose reconstruction
-
-Please first install COLMAP following the [official tutorial](https://colmap.github.io/install.html).
-
-Here I only briefly explain how to reconstruct the poses using GUI. For command line usage, please search by yourself.
-
-1.  Run `colmap gui`.
-2.  Select the tab `Reconstruction -> Automatic reconstruction`.
-3.  Select "Workspace folder" as `foobar`, "Image folder" as `foobar/images`, "Mask folder" as `foobar/masks`.
-4.  Select "Data type" as "Video frames".
-5.  Check "Shared intrinsics" and uncheck "Dense model".
-6.  Press "Run".
-
-After reconstruction, you should see reconstructed camera poses as red quadrangular pyramids, and some reconstructed point clouds. Please roughly judge if the poses are correct (e.g. if your camera moves forward, but COLMAP reconstructs horizontal movements, then this is incorrect), if not, consider retake the photos.
-
-Now your root directory should look like:
-
-```bash
-└── foobar
-    ├── images
-    │   ├── 00000.png
-    │   ...
-    │   └── 00029.png
-    ├── masks
-    │   ├── 00000.png.png
-    │   ...
-    │   └── 00029.png.png
-    ├── database.db
-    └── sparse
-        └── 0
-            ├── cameras.bin
-            ├── images.bin
-            ├── points3D.bin
-            └── project.ini
-```
-
-## 2. Monodepth and optical flow prediction
-
-### Monodepth
+Next, NSFF requires depth and optical flows. We'll use some SOTA methods to perform the prediction.
+  
+### Depth
+  
 The instructions and code are borrowed from [DPT](https://github.com/intel-isl/DPT).
 
-1.  Download the model weights from [here](https://github.com/intel-isl/DPT/releases/download/1_0/dpt_large-midas-2f21e586.pt) and put it in `third_party/depth/weights/`.
+Download the model weights from [here](https://github.com/intel-isl/DPT/releases/download/1_0/dpt_large-midas-2f21e586.pt) and put it in `third_party/depth/weights/`.
 
-2.  From `thrid_party/depth`, run `python run_monodepth.py -i $ROOT_DIR/images -o $ROOT_DIR/disps -t dpt_large`
-
-It will create 16bit depth images under `$ROOT_DIR/disps`.
-
-### RAFT
+### Optical Flow
 The instructions and code are borrowed from [RAFT](https://github.com/princeton-vl/RAFT).
 
-1.  Download `raft-things.pth` from [google drive](https://drive.google.com/drive/folders/1sWDsfuZ3Up38EUQt7-JDTT1HcGHuJgvT) and put it in `third_party/flow/models/`.
+Download `raft-things.pth` from [google drive](https://drive.google.com/drive/folders/1sWDsfuZ3Up38EUQt7-JDTT1HcGHuJgvT) and put it in `third_party/flow/models/`.
 
-2.  From `third_party/flow/`, run `python demo.py --model models/raft-things.pth --path $ROOT_DIR`.
+### Prediction
+  
+Thanks to [owang](https://github.com/owang), after preparing the images and the model weights, we can automate the whole process by a single command `python preprocess.py --root_dir <path/to/foobar>`.
 
 Finally, your root directory will have all of this:
 
 ```bash
 └── foobar
-    ├── images
+    ├── frames (original images, not used, you can delete)
     │   ├── 00000.png
     │   ...
     │   └── 00029.png
-    ├── masks
+    ├── images_resized (resized images, not used, you can delete)
+    │   ├── 00000.png
+    │   ...
+    │   └── 00029.png
+    ├── images (the images to use in training)
+    │   ├── 00000.png
+    │   ...
+    │   └── 00029.png
+    ├── masks (not used but do not delete)
     │   ├── 00000.png.png
     │   ...
     │   └── 00029.png.png
@@ -215,30 +165,21 @@ Finally, your root directory will have all of this:
         ...
         └── 00029.flo
 ```
-
+  
 Now you can start training!
-
-## 3. Train!
+  
+## Train!
 
 Run the following command (modify the parameters according to `opt.py`):
 ```j
 python train.py \
   --dataset_name monocular --root_dir $ROOT_DIR \
-  --img_wh 512 288 --start_end 0 30 --batch_from_same_image \
+  --img_wh 512 288 --start_end 0 30 \
   --N_samples 128 --N_importance 0 --encode_t \
   --num_epochs 50 --batch_size 512 \
   --optimizer adam --lr 5e-4 --lr_scheduler cosine \
   --exp_name exp
 ```
-
-## Comparison with other repos
-
-|           | training GPU memory in GB (batchsize=512) | speed (1 step) | training time/final PSNR on kid-running |
-| :---:     |  :---:     | :---:   | :---: |
-| [Original](https://github.com/zhengqili/Neural-Scene-Flow-Fields)  | 7.6 | **0.2s** | 96 GPUh / 30.45 |
-| This repo | **5.9** | **0.2s** | **12 GPUh / 35.02**
-
-The speed is measured on 1 RTX2080Ti.
 
 # :mag_right: Testing
 
@@ -259,7 +200,8 @@ python eval.py \
 # :warning: Other differences with the original paper
 
 1.  I add entropy loss as suggested [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields/issues/18#issuecomment-851038816). This allows the person to be "thin" and produces less artifact when the camera is far from the original pose.
-2.  I explicitly zero the flows of far regions to avoid the flow being trapped in local minima (reason explained [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields/issues/19#issuecomment-855958276)).
+2.  I add a cross entropy loss to encourage static and dynamic weights to peak at different locations (i.e. one sample points is either static or dynamic).
+3.  I explicitly zero the flows of far regions to avoid the flow being trapped in local minima (reason explained [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields/issues/19#issuecomment-855958276)).
 
 # TODO
 - [x] Add COLMAP reconstruction tutorial (mask out dynamic region).
