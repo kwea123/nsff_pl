@@ -52,7 +52,7 @@ class NeRFSystem(LightningModule):
             load_ckpt(self.embedding_t, hparams.weight_path, 'embedding_t')
 
         self.output_transient = hparams.encode_t
-        self.output_transient_flow = ['fw', 'bw', 'disocc']
+        self.output_transient_flow = ['fw', 'bw', 'disocc'] if hparams.encode_t else []
 
         # fine model always exists
         self.nerf_fine = NeRF(typ='fine',
@@ -119,10 +119,10 @@ class NeRFSystem(LightningModule):
     def setup(self, stage):
         dataset = dataset_dict[self.hparams.dataset_name]
         kwargs = {'root_dir': self.hparams.root_dir,
-                  'img_wh': tuple(self.hparams.img_wh)}
-        if self.hparams.dataset_name == 'monocular':
-            kwargs['start_end'] = tuple(self.hparams.start_end)
-            kwargs['cache_dir'] = self.hparams.cache_dir
+                  'img_wh': tuple(self.hparams.img_wh),
+                  'start_end': tuple(self.hparams.start_end),
+                  'cache_dir': self.hparams.cache_dir,
+                  'prioritized_replay': self.hparams.prioritized_replay}
         self.train_dataset = dataset(split='train', **kwargs)
         self.val_dataset = dataset(split='val', **kwargs)
 
@@ -140,16 +140,7 @@ class NeRFSystem(LightningModule):
         return [self.optimizer], [scheduler]
 
     def train_dataloader(self):
-        self.train_dataset.output_transient_flow = self.output_transient_flow
-        # self.train_dataset.get_data(self.output_transient)
-        self.train_dataset.subsample = self.current_epoch>=10
-        self.train_dataset.batch_from_same_image = self.hparams.batch_from_same_image
         self.train_dataset.batch_size = self.hparams.batch_size
-
-        if self.hparams.batch_from_same_image:
-            batch_size = None
-        else:
-            batch_size = self.hparams.batch_size
 
         def wif(id):
             uint64_seed = torch.initial_seed()
@@ -160,7 +151,7 @@ class NeRFSystem(LightningModule):
                           shuffle=True,
                           num_workers=4,
                           worker_init_fn=wif,
-                          batch_size=batch_size,
+                          batch_size=None,
                           pin_memory=True)
 
     def val_dataloader(self):
@@ -176,10 +167,19 @@ class NeRFSystem(LightningModule):
 
     def training_step(self, batch, batch_nb):
         rays, rgbs, ts = batch['rays'], batch['rgbs'], batch.get('ts', None)
+        # print(batch['batch_idxs'])
+        # if self.train_dataset.prioritized_replay:
+        #     for i in range(len(rays)): # add experience
+        #         self.train_dataset.replay_buffers[ts[0].item()].add(rays[i].cpu())
         kwargs = {'epoch': self.current_epoch,
                   'output_transient': self.output_transient,
                   'output_transient_flow': self.output_transient_flow}
         results = self(rays, ts, **kwargs)
+        # if self.train_dataset.prioritized_replay:
+        #     new_priorities = ((results['rgb_fine']-targets['rgbs'])**2).sum(-1)+1e-6
+        #     self.train_dataset.replay_buffers[ts[0].item()] \
+        #         .update_priorities(batch['batch_idxs'], new_priorities.cpu().numpy())
+        #   kwargs['weights] = batch['weights]...
 
         loss_d = self.loss(results, batch, **kwargs)
         loss = sum(l for l in loss_d.values())
