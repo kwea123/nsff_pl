@@ -31,16 +31,16 @@ def get_opts():
                         help='scene name, used as output folder name')
     parser.add_argument('--split', type=str, default='test',
                         help='test or test_spiral')
-    parser.add_argument('--img_wh', nargs="+", type=int, default=[800, 800],
+    parser.add_argument('--img_wh', nargs="+", type=int, default=[512, 288],
                         help='resolution (img_w, img_h) of the image')
-    parser.add_argument('--start_end', nargs="+", type=int, default=[0, -1],
+    parser.add_argument('--start_end', nargs="+", type=int, default=[0, 100],
                         help='start frame and end frame')
 
     parser.add_argument('--use_viewdir', default=False, action="store_true",
                         help='whether to use view dependency in static network')
-    parser.add_argument('--N_samples', type=int, default=64,
+    parser.add_argument('--N_samples', type=int, default=128,
                         help='number of coarse samples')
-    parser.add_argument('--N_importance', type=int, default=128,
+    parser.add_argument('--N_importance', type=int, default=0,
                         help='number of additional fine samples')
     parser.add_argument('--chunk', type=int, default=32*1024,
                         help='chunk size to split the input to avoid OOM')
