@@ -72,9 +72,6 @@ class NeRFWLoss(nn.Module):
         ret['disp_l'] = self.lambda_geo_d * \
             shiftscale_invariant_depthloss(inputs['depth_fine'], targets['disps'])
 
-        ret['tr_far_l'] = self.lambda_reg * \
-            inputs['transient_sigmas_fine'][inputs['zs_fine']>self.z_far]
-
         if kwargs['output_transient_flow']:
             ret['entropy_l'] = self.lambda_ent * \
                 torch.sum(-inputs['transient_weights_fine']*
@@ -125,7 +122,7 @@ class NeRFWLoss(nn.Module):
                 inputs['transient_disoccs_bw'].sum()
             ret['disocc_l'] = self.lambda_reg * (1-inputs['transient_disocc_fw']+
                                                  1-inputs['transient_disocc_bw'])
-            
+
             N = inputs['xyzs_fine'].shape[1]
             xyzs_w = ray_utils.ndc2world(inputs['xyzs_fine'][:, :int(N*self.z_far)], Ks)
             xyzs_fw_w = ray_utils.ndc2world(inputs['xyzs_fw'][:, :int(N*self.z_far)], Ks)
