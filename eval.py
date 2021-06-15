@@ -127,7 +127,7 @@ if __name__ == "__main__":
     dir_name = f'results/{args.dataset_name}/{args.scene_name}'
     os.makedirs(dir_name, exist_ok=True)
 
-    kwargs = {'K': dataset.K, 'dataset': dataset}
+    kwargs = {'K': dataset.K}#, 'dataset': dataset}
 
     # main process for merging BlenderProc and NeRF
     embedding_xyz = PosEmbedding(9, 10)
