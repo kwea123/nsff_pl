@@ -165,11 +165,22 @@ class MonocularDataset(Dataset):
             self.poses_test = self.poses.copy()
             self.image_paths_test = self.image_paths
 
-        elif self.split == 'test_spiral':
-            max_trans = np.percentile(np.abs(np.diff(self.poses[:, 0, 3])), 10)
-            radii = np.array([max_trans, max_trans, 0])
-            self.poses_test = colmap_utils.create_spiral_poses(
-                                self.poses, radii, n_poses=6*self.N_frames)
+        elif self.split.startswith('test_fixview'):
+            # fix to target view and change time
+            target_idx = int(self.split.split('_')[-1])
+            self.poses_test = np.tile(self.poses[target_idx], (self.N_frames, 1, 1))
+
+        elif self.split.startswith('test_spiral'):
+            if self.split == 'test_spiral': # spiral on the whole sequence
+                max_trans = np.percentile(np.abs(np.diff(self.poses[:, 0, 3])), 10)
+                radii = np.array([max_trans, max_trans, 0])
+                self.poses_test = colmap_utils.create_spiral_poses(
+                                    self.poses, radii, n_poses=6*self.N_frames)
+            else: # spiral on the target idx
+                target_idx = int(self.split.split('_')[-1])
+                max_trans = np.abs(self.poses[0, 0, 3]-self.poses[-1, 0, 3])/5
+                self.poses_test = colmap_utils.create_wander_path(
+                                    self.poses[target_idx], max_trans=max_trans, n_poses=60)
 
     def define_transforms(self):
         self.transform = T.ToTensor()
@@ -208,8 +219,15 @@ class MonocularDataset(Dataset):
                 time = self.val_id % self.N_frames
             else:
                 c2w = torch.FloatTensor(self.poses_test[idx])
-                if self.split == 'test': time = idx
-                elif self.split == 'test_spiral': time = int(idx/len(self.poses_test)*self.N_frames)
+                if self.split == 'test':
+                    time = idx
+                elif self.split.startswith('test_spiral'):
+                    if self.split == 'test_spiral': 
+                        time = int(idx/len(self.poses_test)*self.N_frames)
+                    else:
+                        time = int(self.split.split('_')[-1])
+                elif self.split.startswith('test_fixview'):
+                    time = idx
                 else: time = 0
 
             directions = ray_utils.get_ray_directions(self.img_wh[1], self.img_wh[0], self.K)
