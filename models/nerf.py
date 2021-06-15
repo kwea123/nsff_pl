@@ -88,6 +88,8 @@ class NeRF(nn.Module):
 
         # static output layers
         self.static_sigma = nn.Linear(W, 1)
+        with torch.no_grad():
+            self.static_sigma.bias.fill_(1)
         self.static_rgb = nn.Sequential(nn.Linear(W, 3), nn.Sigmoid())
 
         if self.encode_transient:
@@ -104,6 +106,8 @@ class NeRF(nn.Module):
 
             # transient output layers
             self.transient_sigma = nn.Linear(W, 1)
+            # with torch.no_grad():
+            #     self.transient_sigma.bias.fill_(1)
             self.transient_rgb = nn.Sequential(nn.Linear(W, 3), nn.Sigmoid())
             if typ == 'fine' and self.output_flow:
                 self.flow_scale = flow_scale
