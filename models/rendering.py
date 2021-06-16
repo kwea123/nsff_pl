@@ -122,7 +122,7 @@ def render_rays(models,
             transient_rgbs_w = out[..., :3]
             transient_sigmas_w = out[..., 3]
             transient_flows_ = out[..., 4:7]
-            # transient_flows_[zs>z_far] = 0
+            transient_flows_[zs>z_far] = 0
 
             noise = torch.randn_like(transient_sigmas_w) * noise_std
             transient_alphas_w = 1-torch.exp(-deltas*act(transient_sigmas_w+noise))
@@ -178,11 +178,12 @@ def render_rays(models,
             if output_transient:
                 results[f'transient_rgbs_{typ}'] = transient_rgbs = out[..., 4:7]
                 transient_sigmas = out[..., 7]
+                # transient_sigmas[:, -1] -= 1
                 if output_transient_flow: # only [] or ['fw', 'bw'] or ['fw', 'bw', 'disocc'] !
                     results['transient_flows_fw'] = transient_flows_fw = out[..., 8:11]
                     results['transient_flows_bw'] = transient_flows_bw = out[..., 11:14]
-                    # transient_flows_fw[zs>z_far] = 0
-                    # transient_flows_bw[zs>z_far] = 0
+                    transient_flows_fw[zs>z_far] = 0
+                    transient_flows_bw[zs>z_far] = 0
                 if 'disocc' in output_transient_flow:
                     transient_disoccs_fw = out[..., 14]
                     transient_disoccs_bw = out[..., 15]

@@ -197,11 +197,18 @@ class MonocularDataset(Dataset):
                 rays, weights, batch_idxs = \
                     self.replay_buffer[t].sample(self.batch_size, beta=self.beta)
             else:
+                # st_samples = int(self.batch_size*0.2)
+                # st_rand_idx = np.random.choice(len(self.rays_dict['static'][t]),
+                #                                st_samples)
+                # dy_rand_idx = np.random.choice(len(self.rays_dict['dynamic'][t]),
+                #                                self.batch_size-st_samples)
+                # rays = torch.cat([self.rays_dict['static'][t][st_rand_idx],
+                #                   self.rays_dict['dynamic'][t][dy_rand_idx]], 0)
                 rand_idx = np.random.choice(len(self.rays_dict['static'][t])+
                                             len(self.rays_dict['dynamic'][t]),
                                             self.batch_size)
                 rays = torch.cat([self.rays_dict['static'][t],
-                                    self.rays_dict['dynamic'][t]], 0)[rand_idx]
+                                  self.rays_dict['dynamic'][t]], 0)[rand_idx]
             sample = {'rays': rays[:, :6],
                       'rgbs': rays[:, 6:9],
                       'ts': rays[:, 9].long(),
