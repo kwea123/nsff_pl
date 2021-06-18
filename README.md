@@ -1,4 +1,7 @@
 # nsff_pl
+
+### ⚠️ The current code is still under experiment, and it might not produce good results for your data. For a more reliable implementation, please use the original author's code.
+
 Neural Scene Flow Fields using pytorch-lightning. This repo reimplements the [NSFF](https://github.com/zhengqili/Neural-Scene-Flow-Fields) idea, but modifies several operations based on observation of NSFF results and discussions with the authors. For discussion details, please see the [issues](https://github.com/zhengqili/Neural-Scene-Flow-Fields/issues?q=is%3Aissue+author%3Akwea123) of the original repo. The code is based on my previous [implementation](https://github.com/kwea123/nerf_pl).
 
 The main modifications are the followings:
