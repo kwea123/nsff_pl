@@ -49,9 +49,9 @@ class MonocularDataset(Dataset):
         W = camdata[1].width
         f, cx, cy, _ = camdata[1].params
 
-        self.K = np.array([[f, 0, cx],
-                           [0, f, cy],
-                           [0,  0, 1]], dtype=np.float32)
+        self.K = np.array([[f, 0, W/2],
+                           [0, f, H/2],
+                           [0,  0,  1]], dtype=np.float32)
         self.K[0] *= self.img_wh[0]/W
         self.K[1] *= self.img_wh[1]/H
 
@@ -76,7 +76,7 @@ class MonocularDataset(Dataset):
         xyz_world = np.concatenate([np.array(xyz_world), np.ones((len(xyz_world), 1))], -1)
         xyz_cam0 = (xyz_world @ w2c_mats[self.start_frame].T)[:, :3] # xyz in the first frame
         xyz_cam0 = xyz_cam0[xyz_cam0[:, 2]>0]
-        self.nearest_depth = np.percentile(xyz_cam0[:, 2], 1) * 0.75
+        self.nearest_depth = np.percentile(xyz_cam0[:, 2], 5) * 0.75
 
         # Step 2: correct poses
         # change "right down front" of COLMAP to "right up back"
@@ -197,13 +197,6 @@ class MonocularDataset(Dataset):
                 rays, weights, batch_idxs = \
                     self.replay_buffer[t].sample(self.batch_size, beta=self.beta)
             else:
-                # st_samples = int(self.batch_size*0.2)
-                # st_rand_idx = np.random.choice(len(self.rays_dict['static'][t]),
-                #                                st_samples)
-                # dy_rand_idx = np.random.choice(len(self.rays_dict['dynamic'][t]),
-                #                                self.batch_size-st_samples)
-                # rays = torch.cat([self.rays_dict['static'][t][st_rand_idx],
-                #                   self.rays_dict['dynamic'][t][dy_rand_idx]], 0)
                 rand_idx = np.random.choice(len(self.rays_dict['static'][t])+
                                             len(self.rays_dict['dynamic'][t]),
                                             self.batch_size)
