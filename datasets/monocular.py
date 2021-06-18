@@ -49,9 +49,9 @@ class MonocularDataset(Dataset):
         W = camdata[1].width
         f, cx, cy, _ = camdata[1].params
 
-        self.K = np.array([[f, 0, cx],
-                           [0, f, cy],
-                           [0,  0, 1]], dtype=np.float32)
+        self.K = np.array([[f, 0, W/2],
+                           [0, f, H/2],
+                           [0,  0,  1]], dtype=np.float32)
         self.K[0] *= self.img_wh[0]/W
         self.K[1] *= self.img_wh[1]/H
 
@@ -76,7 +76,7 @@ class MonocularDataset(Dataset):
         xyz_world = np.concatenate([np.array(xyz_world), np.ones((len(xyz_world), 1))], -1)
         xyz_cam0 = (xyz_world @ w2c_mats[self.start_frame].T)[:, :3] # xyz in the first frame
         xyz_cam0 = xyz_cam0[xyz_cam0[:, 2]>0]
-        self.nearest_depth = np.percentile(xyz_cam0[:, 2], 1) * 0.75
+        self.nearest_depth = np.percentile(xyz_cam0[:, 2], 5) * 0.75
 
         # Step 2: correct poses
         # change "right down front" of COLMAP to "right up back"
@@ -165,11 +165,22 @@ class MonocularDataset(Dataset):
             self.poses_test = self.poses.copy()
             self.image_paths_test = self.image_paths
 
-        elif self.split == 'test_spiral':
-            max_trans = np.percentile(np.abs(np.diff(self.poses[:, 0, 3])), 10)
-            radii = np.array([max_trans, max_trans, 0])
-            self.poses_test = colmap_utils.create_spiral_poses(
-                                self.poses, radii, n_poses=6*self.N_frames)
+        elif self.split.startswith('test_fixview'):
+            # fix to target view and change time
+            target_idx = int(self.split.split('_')[-1])
+            self.poses_test = np.tile(self.poses[target_idx], (self.N_frames, 1, 1))
+
+        elif self.split.startswith('test_spiral'):
+            if self.split == 'test_spiral': # spiral on the whole sequence
+                max_trans = np.percentile(np.abs(np.diff(self.poses[:, 0, 3])), 10)
+                radii = np.array([max_trans, max_trans, 0])
+                self.poses_test = colmap_utils.create_spiral_poses(
+                                    self.poses, radii, n_poses=6*self.N_frames)
+            else: # spiral on the target idx
+                target_idx = int(self.split.split('_')[-1])
+                max_trans = np.abs(self.poses[0, 0, 3]-self.poses[-1, 0, 3])/5
+                self.poses_test = colmap_utils.create_wander_path(
+                                    self.poses[target_idx], max_trans=max_trans, n_poses=60)
 
     def define_transforms(self):
         self.transform = T.ToTensor()
@@ -190,7 +201,7 @@ class MonocularDataset(Dataset):
                                             len(self.rays_dict['dynamic'][t]),
                                             self.batch_size)
                 rays = torch.cat([self.rays_dict['static'][t],
-                                    self.rays_dict['dynamic'][t]], 0)[rand_idx]
+                                  self.rays_dict['dynamic'][t]], 0)[rand_idx]
             sample = {'rays': rays[:, :6],
                       'rgbs': rays[:, 6:9],
                       'ts': rays[:, 9].long(),
@@ -208,8 +219,15 @@ class MonocularDataset(Dataset):
                 time = self.val_id % self.N_frames
             else:
                 c2w = torch.FloatTensor(self.poses_test[idx])
-                if self.split == 'test': time = idx
-                elif self.split == 'test_spiral': time = int(idx/len(self.poses_test)*self.N_frames)
+                if self.split == 'test':
+                    time = idx
+                elif self.split.startswith('test_spiral'):
+                    if self.split == 'test_spiral': 
+                        time = int(idx/len(self.poses_test)*self.N_frames)
+                    else:
+                        time = int(self.split.split('_')[-1])
+                elif self.split.startswith('test_fixview'):
+                    time = idx
                 else: time = 0
 
             directions = ray_utils.get_ray_directions(self.img_wh[1], self.img_wh[0], self.K)

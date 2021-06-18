@@ -30,22 +30,6 @@ class PosEmbedding(nn.Module):
         return torch.cat(out, -1)
 
 
-class VocabEmbedding(nn.Module):
-    def __init__(self, N_vocab, N_feat):
-        super().__init__()
-        self.emb = nn.Embedding(N_vocab, N_feat)
-
-    def forward(self, x):
-        """
-        Inputs:
-            x: (B) integer indices
-
-        Outputs:
-            out: (B, N_feat)
-        """
-        return self.emb(x)
-
-
 class NeRF(nn.Module):
     def __init__(self, typ,
                  D=8, W=256, skips=[4],

@@ -398,3 +398,32 @@ def create_spiral_poses(original_poses, radii, n_poses=120):
         poses_spiral += [pose]
 
     return np.stack(poses_spiral, 0) # (n_poses, 3, 4)
+
+
+def create_wander_path(c2w, max_trans, n_poses=60):
+    """
+    Borrowed from
+    https://github.com/zhengqili/Neural-Scene-Flow-Fields/blob/main/nsff_exp/load_llff.py#L424
+    """
+    output_poses = []
+
+    for i in range(n_poses):
+        x_trans = max_trans * np.sin(2.0 * np.pi * float(i) / float(n_poses))
+        y_trans = max_trans * np.cos(2.0 * np.pi * float(i) / float(n_poses)) /3.0
+        z_trans = max_trans * np.cos(2.0 * np.pi * float(i) / float(n_poses)) /3.0
+
+        i_pose = np.concatenate([
+            np.concatenate(
+                [np.eye(3), np.array([x_trans, y_trans, z_trans])[:, np.newaxis]], axis=1),
+            np.array([0.0, 0.0, 0.0, 1.0])[np.newaxis, :]
+        ],axis=0)
+
+        i_pose = np.linalg.inv(i_pose)
+
+        ref_pose = np.concatenate([c2w[:3, :4],
+                                   np.array([0.0, 0.0, 0.0, 1.0])[np.newaxis, :]], axis=0)
+
+        render_pose = np.dot(ref_pose, i_pose)
+        output_poses.append(render_pose)
+    
+    return output_poses

@@ -121,20 +121,21 @@ def render_rays(models,
             out = rearrange(out, '(n1 n2) c -> n1 n2 c', n1=N_rays, n2=N_samples_)
             transient_rgbs_w = out[..., :3]
             transient_sigmas_w = out[..., 3]
-            transient_flows_ = out[..., 4:7]
-            transient_flows_[zs>z_far] = 0
+            transient_flows_w = out[..., 4:7]
+            transient_flows_w[zs>z_far] = 0
 
             noise = torch.randn_like(transient_sigmas_w) * noise_std
-            transient_alphas_w = (1-torch.exp(-deltas*act(transient_sigmas_w+noise)))
+            transient_alphas_w = 1-torch.exp(-deltas*act(transient_sigmas_w+noise))
             alphas_w = 1-(1-static_alphas)*(1-transient_alphas_w)
             alphas_w_shifted = torch.cat([torch.ones_like(alphas_w[:, :1]), 1-alphas_w], -1)
             transmittance_w = torch.cumprod(alphas_w_shifted[:, :-1], -1)
             static_weights_w = rearrange(static_alphas*transmittance_w, 'n1 n2 -> n1 n2 1')
             transient_weights_w = rearrange(transient_alphas_w*transmittance_w, 'n1 n2 -> n1 n2 1')
             static_rgb_map_w = reduce(static_weights_w*static_rgbs, 'n1 n2 c -> n1 c', 'sum')
-            transient_rgb_map_w = reduce(transient_weights_w*transient_rgbs_w, 'n1 n2 c -> n1 c', 'sum')
+            transient_rgb_map_w = \
+                reduce(transient_weights_w*transient_rgbs_w, 'n1 n2 c -> n1 c', 'sum')
             rgb_map_w = static_rgb_map_w + transient_rgb_map_w
-            return rgb_map_w, transient_flows_
+            return rgb_map_w, transient_flows_w
 
         typ = model.typ
         results[f'zs_{typ}'] = zs
@@ -200,8 +201,7 @@ def render_rays(models,
             transient_sigmas[visibilities.view_as(transient_sigmas)==0] = -10
 
         deltas = zs[:, 1:] - zs[:, :-1] # (N_rays, N_samples_-1)
-        delta_inf = 1e2 * torch.ones_like(deltas[:, :1])
-        deltas = torch.cat([deltas, delta_inf], -1)
+        deltas = torch.cat([deltas, 100*torch.ones_like(deltas[:, :1])], -1)
 
         noise = torch.randn_like(static_sigmas) * noise_std
         results[f'static_sigmas_{typ}'] = static_sigmas = act(static_sigmas+noise)
@@ -231,8 +231,8 @@ def render_rays(models,
                 results['xyzs_fw_bw'] = xyz_fw + transient_flows_fw_bw
                 results['xyzs_bw_fw'] = xyz_bw + transient_flows_fw_bw
 
-        alphas_shifted = torch.cat([torch.ones_like(alphas[:, :1]), 1-alphas], -1) # [1, 1-a1, 1-a2, ...]
-        transmittance = torch.cumprod(alphas_shifted[:, :-1], -1) # [1, 1-a1, (1-a1)(1-a2), ...]
+        alphas_shifted = torch.cat([torch.ones_like(alphas[:, :1]), 1-alphas], -1)
+        transmittance = torch.cumprod(alphas_shifted[:, :-1], -1)
 
         if output_transient:
             static_weights = static_alphas * transmittance
@@ -244,17 +244,18 @@ def render_rays(models,
         if output_transient:
             results[f'static_weights_{typ}'] = static_weights
             results[f'transient_weights_{typ}'] = transient_weights
+            results[f'static_alphas_{typ}'] = static_alphas
+            results[f'transient_alphas_{typ}'] = transient_alphas
             results[f'weights_{typ}'] = weights
-        else: results[f'static_weights_{typ}'] = weights
+        else:
+            results[f'static_weights_{typ}'] = weights
+            results[f'static_alphas_{typ}'] = alphas
         if test_time:
             results[f'xyz_{typ}'] = reduce(weights_*xyz, 'n1 n2 c -> n1 c', 'sum')
-            if output_transient:
-                results[f'static_alphas_{typ}'] = static_alphas
-                results[f'transient_alphas_{typ}'] = transient_alphas
-            else: results[f'static_alphas_{typ}'] = alphas
             if typ == 'coarse':
                 return
 
+        results[f'depth_{typ}'] = reduce(weights*zs, 'n1 n2 -> n1', 'sum')
         if output_transient:
             static_rgb_map = reduce(rearrange(static_weights, 'n1 n2 -> n1 n2 1')*static_rgbs,
                                     'n1 n2 c -> n1 c', 'sum')
@@ -269,7 +270,8 @@ def render_rays(models,
             static_alphas_shifted = \
                 torch.cat([torch.ones_like(static_alphas[:, :1]), 1-static_alphas], -1)
             static_transmittance = torch.cumprod(static_alphas_shifted[:, :-1], -1)
-            _static_weights = static_alphas * static_transmittance
+            results[f'_static_weights_{typ}'] = \
+                _static_weights = static_alphas * static_transmittance
             _static_weights_ = rearrange(_static_weights, 'n1 n2 -> n1 n2 1')
             results[f'_static_rgb_{typ}'] = \
                 reduce(_static_weights_*static_rgbs, 'n1 n2 c -> n1 c', 'sum')
@@ -285,7 +287,7 @@ def render_rays(models,
                     reduce(transient_weights_*transient_flows_bw, 'n1 n2 c -> n1 c', 'sum')
                 results['xyz_bw'] = results['xyz_fine']+results['transient_flow_bw']
 
-                if 'disocc' in output_transient_flow:
+                if (not test_time) and 'disocc' in output_transient_flow:
                     results['transient_disocc_fw'] = \
                         reduce(weights*transient_disoccs_fw, 'n1 n2 -> n1 1', 'sum')
                     results['transient_disoccs_fw'] = \
@@ -296,15 +298,22 @@ def render_rays(models,
                         rearrange(transient_disoccs_bw, 'n1 n2 -> n1 n2 1')
 
             if test_time:
+                # # compute transient weight when it exists solely.
+                # transient_alphas_shifted = \
+                #     torch.cat([torch.ones_like(transient_alphas[:, :1]), 1-transient_alphas], -1)
+                # transient_transmittance = torch.cumprod(transient_alphas_shifted[:, :-1], -1)
+                # _transient_weights = transient_alphas * transient_transmittance
+                # _transient_weights_ = rearrange(_transient_weights, 'n1 n2 -> n1 n2 1')
+                # results[f'_transient_depth_{typ}'] = \
+                #     reduce(_transient_weights*zs, 'n1 n2 -> n1', 'sum')
                 results[f'transient_rgb_{typ}'] = transient_rgb_map + \
                     0.8*(1-rearrange(results['transient_alpha_fine'], 'n1 -> n1 1')) # gray bg
-                results[f'transient_depth_{typ}'] = \
-                    reduce(transient_weights*zs, 'n1 n2 -> n1', 'sum')
+                # results[f'transient_depth_{typ}'] = \
+                #     reduce(transient_weights*zs, 'n1 n2 -> n1', 'sum')
                 
         else: # no transient field
             results[f'rgb_{typ}'] = reduce(weights_*static_rgbs, 'n1 n2 c -> n1 c', 'sum')
 
-        results[f'depth_{typ}'] = reduce(weights*zs, 'n1 n2 -> n1', 'sum')
         return
 
 
@@ -321,7 +330,7 @@ def render_rays(models,
     # coarse sample depths (same for static and transient)
     zs = torch.linspace(0, 1, N_samples, device=rays.device).expand(N_rays, N_samples)
     zs_mid = 0.5 * (zs[: ,:-1]+zs[: ,1:]) # (N_rays, N_samples-1) interval mid points
-    z_far = 0.95 # explicitly zero the transient sigma and flow if z exceeds this value
+    z_far = 0.95 # explicitly zero the flow if z exceeds this value
     
     if perturb > 0: # perturb sample depths
         # get intervals between samples
@@ -375,12 +384,11 @@ def interpolate(results_t, results_tp1, dt, K, c2w, img_wh):
     Interpolate between two results t and t+1 to produce t+dt, dt in (0, 1).
     For each sample on the ray (the sample points lie on the same distances, so they
     actually form planes), compute the optical flow on this plane, then use softsplat
-    to splat the flows. Finally use MPI technique to compute the composited image.
+    to splat the flows. Finally use MPI technique to compute the composite image.
     Used in test time only.
 
     Inputs:
         results_t, results_tp1: dictionaries of the @render_rays function.
-                                N_importance should be 1 to ensure roughtly same MPI planes.
         dt: float in (0, 1)
         K: (3, 3) intrinsics matrix (MUST BE THE SAME for results_t and results_tp1!)
         c2w: (3, 4) current pose (MUST BE THE SAME for results_t and results_tp1!)
@@ -400,12 +408,21 @@ def interpolate(results_t, results_tp1, dt, K, c2w, img_wh):
     w2c[1:] *= -1 # "right up back" to "right down forward" for cam projection
     P = K @ w2c # (3, 4) projection matrix
     grid = create_meshgrid(h, w, False, device) # (1, h, w, 2)
+    xyzs = results_t['xyzs_fine'] # equals results_tp1['xyzs_fine']
+
+    # static buffers
+    static_rgb = rearrange(results_t['static_rgbs_fine'],
+                           '(h w) n2 c -> h w n2 c', w=w, h=h, c=3)
+    static_a = rearrange(results_t['static_alphas_fine'], '(h w) n2 -> h w n2 1', w=w, h=h)
 
     # compute forward buffers
-    xyz_fw = results_t['xyzs_fine']+dt*results_t['transient_flows_fw'] # (N_rays, N_samples, 3)
-    xyz_fw_w = ray_utils.ndc2world(rearrange(xyz_fw, 'n1 n2 c -> (n1 n2) c'), K)
-    uvds_fw = P[:3, :3] @ rearrange(xyz_fw_w, 'n c -> c n') + P[:3, 3:] # (3, N_rays*N_samples)
-    uvs_fw = uvds_fw[:2] / uvds_fw[2] # (2, N_rays*N_samples)
+    xyzs_w = ray_utils.ndc2world(rearrange(xyzs, 'n1 n2 c -> (n1 n2) c'), K)
+    xyzs_fw_w = ray_utils.ndc2world(
+                    rearrange(xyzs+results_t['transient_flows_fw'],
+                    'n1 n2 c -> (n1 n2) c'), K) # fw points with full flow
+    xyzs_fw_w = xyzs_w + dt*(xyzs_fw_w-xyzs_w) # scale the flow with dt
+    uvds_fw = P[:3, :3] @ rearrange(xyzs_fw_w, 'n c -> c n') + P[:3, 3:]
+    uvs_fw = uvds_fw[:2] / uvds_fw[2]
     uvs_fw = rearrange(uvs_fw, 'c (n1 n2) -> c n1 n2', n1=N_rays, n2=N_samples)
     uvs_fw = rearrange(uvs_fw, 'c (h w) n2 -> n2 h w c', w=w, h=h)
     of_fw = rearrange(uvs_fw-grid, 'n2 h w c -> n2 c h w', c=2)
@@ -415,15 +432,14 @@ def interpolate(results_t, results_tp1, dt, K, c2w, img_wh):
     transient_a_t = rearrange(results_t['transient_alphas_fine'],
                               '(h w) n2 -> n2 1 h w', w=w, h=h)
     transient_rgba_t = torch.cat([transient_rgb_t, transient_a_t], 1)
-    static_rgb_fw = rearrange(results_t['static_rgbs_fine'],
-                              '(h w) n2 c -> h w n2 c', w=w, h=h, c=3)
-    static_a_fw = rearrange(results_t['static_alphas_fine'], '(h w) n2 -> h w n2 1', w=w, h=h)
 
     # compute backward buffers
-    xyz_bw = results_tp1['xyzs_fine']+(1-dt)*results_tp1['transient_flows_bw']
-    xyz_bw_w = ray_utils.ndc2world(rearrange(xyz_bw, 'n1 n2 c -> (n1 n2) c'), K)
-    uvds_bw = P[:3, :3] @ rearrange(xyz_bw_w, 'n c -> c n') + P[:3, 3:] # (3, N_rays*N_samples)
-    uvs_bw = uvds_bw[:2] / uvds_bw[2] # (2, N_rays*N_samples)
+    xyzs_bw_w = ray_utils.ndc2world(
+                    rearrange(xyzs+results_tp1['transient_flows_bw'],
+                    'n1 n2 c -> (n1 n2) c'), K) # bw points with full flow
+    xyzs_bw_w = xyzs_w + (1-dt)*(xyzs_bw_w-xyzs_w) # scale the flow with 1-dt
+    uvds_bw = P[:3, :3] @ rearrange(xyzs_bw_w, 'n c -> c n') + P[:3, 3:]
+    uvs_bw = uvds_bw[:2] / uvds_bw[2]
     uvs_bw = rearrange(uvs_bw, 'c (n1 n2) -> c n1 n2', n1=N_rays, n2=N_samples)
     uvs_bw = rearrange(uvs_bw, 'c (h w) n2 -> n2 h w c', w=w, h=h)
     of_bw = rearrange(uvs_bw-grid, 'n2 h w c -> n2 c h w', c=2)
@@ -433,30 +449,24 @@ def interpolate(results_t, results_tp1, dt, K, c2w, img_wh):
     transient_a_tp1 = rearrange(results_tp1['transient_alphas_fine'],
                                 '(h w) n2 -> n2 1 h w', w=w, h=h)
     transient_rgba_tp1 = torch.cat([transient_rgb_tp1, transient_a_tp1], 1)
-    static_rgb_bw = rearrange(results_tp1['static_rgbs_fine'],
-                              '(h w) n2 c -> h w n2 c', w=w, h=h, c=3)
-    static_a_bw = rearrange(results_tp1['static_alphas_fine'],
-                            '(h w) n2 -> h w n2 1', w=w, h=h)
-
+    
     for s in range(N_samples): # compute MPI planes (front to back composition)
         transient_rgba_fw = FunctionSoftsplat(tenInput=transient_rgba_t[s:s+1].cuda(), 
-                                               tenFlow=of_fw[s:s+1].cuda(), 
-                                               tenMetric=None, 
-                                               strType='average').cpu()
+                                              tenFlow=of_fw[s:s+1].cuda(), 
+                                              tenMetric=None, 
+                                              strType='average').cpu()
         transient_rgba_fw = rearrange(transient_rgba_fw, '1 c h w -> h w c')
         transient_rgba_bw = FunctionSoftsplat(tenInput=transient_rgba_tp1[s:s+1].cuda(), 
-                                               tenFlow=of_bw[s:s+1].cuda(), 
-                                               tenMetric=None, 
-                                               strType='average').cpu()
+                                              tenFlow=of_bw[s:s+1].cuda(), 
+                                              tenMetric=None, 
+                                              strType='average').cpu()
         transient_rgba_bw = rearrange(transient_rgba_bw, '1 c h w -> h w c')
-        composed_rgb = (transient_rgba_fw[..., :3]*transient_rgba_fw[..., 3:]+
-                        static_rgb_fw[:, :, s]*static_a_fw[:, :, s])*(1-dt) + \
-                       (transient_rgba_bw[..., :3]*transient_rgba_bw[..., 3:]+
-                        static_rgb_bw[:, :, s]*static_a_bw[:, :, s])*dt
+        composed_rgb = transient_rgba_fw[..., :3]*transient_rgba_fw[..., 3:]*(1-dt) + \
+                       transient_rgba_bw[..., :3]*transient_rgba_bw[..., 3:]*dt + \
+                       static_rgb[:, :, s]*static_a[:, :, s]
         composed_a = 1 - (1-(transient_rgba_fw[..., 3:]*(1-dt)+
                              transient_rgba_bw[..., 3:]*dt)) * \
-                         (1-(static_a_fw[:, :, s]*(1-dt)+
-                             static_a_bw[:, :, s]*dt))
+                         (1-static_a[:, :, s])
         ret_rgba[..., :3] += (1-ret_rgba[..., 3:])*composed_rgb
         ret_rgba[..., 3:] += (1-ret_rgba[..., 3:])*composed_a
 

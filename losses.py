@@ -60,8 +60,8 @@ class NeRFWLoss(nn.Module):
 
         self.topk = topk
 
-        # self.Ks (1, 3, 3) and
-        # self.Ps (world to image projection matrices) (1, N_frames, 3, 4) and
+        # self.Ks camera intrinsics (1, 3, 3) and
+        # self.Ps world to image projection matrices (1, N_frames, 3, 4) and
         # self.max_t (N_frames-1)
         # are registered as buffers in train.py !
 
@@ -72,15 +72,12 @@ class NeRFWLoss(nn.Module):
         ret['disp_l'] = self.lambda_geo_d * \
             shiftscale_invariant_depthloss(inputs['depth_fine'], targets['disps'])
 
-        ret['tr_far_l'] = self.lambda_reg * \
-            inputs['transient_sigmas_fine'][inputs['zs_fine']>self.z_far]
-
         if kwargs['output_transient_flow']:
             ret['entropy_l'] = self.lambda_ent * \
                 torch.sum(-inputs['transient_weights_fine']*
                           torch.log(inputs['transient_weights_fine']+1e-8), -1)
-            # linearly increase the weight from 0 to lambda_ent in 10 epochs
-            cross_entropy_w = self.lambda_ent * min(kwargs['epoch']/10, 1.0)
+            # linearly increase the weight from 0 to lambda_ent in 20 epochs
+            cross_entropy_w = self.lambda_ent * min(kwargs['epoch']/20, 1.0)
             ret['cross_entropy_l'] = cross_entropy_w * \
                 torch.sum(inputs['transient_weights_fine'].detach()*
                           torch.log(inputs['static_weights_fine']+1e-8), -1)
@@ -92,12 +89,12 @@ class NeRFWLoss(nn.Module):
             ts_fw = torch.clamp(targets['ts']+1, max=self.max_t)
             Ps_fw = self.Ps[targets['cam_ids'], ts_fw] # (N_rays, 3, 4)
             uvd_fw = Ps_fw[:, :3, :3] @ xyz_fw_w.unsqueeze(-1) + Ps_fw[:, :3, 3:]
-            uv_fw = uvd_fw[:, :2, 0] / uvd_fw[:, 2:, 0]
+            uv_fw = uvd_fw[:, :2, 0] / torch.abs(uvd_fw[:, 2:, 0])+1e-8
 
             ts_bw = torch.clamp(targets['ts']-1, min=0)
             Ps_bw = self.Ps[targets['cam_ids'], ts_bw] # (N_rays, 3, 4)
             uvd_bw = Ps_bw[:, :3, :3] @ xyz_bw_w.unsqueeze(-1) + Ps_bw[:, :3, 3:]
-            uv_bw = uvd_bw[:, :2, 0] / uvd_bw[:, 2:, 0] # (N_rays, 2)
+            uv_bw = uvd_bw[:, :2, 0] / torch.abs(uvd_bw[:, 2:, 0])+1e-8 # (N_rays, 2)
 
             # disable geo loss for the first and last frames (no gt for fw/bw)
             # also projected depth must > 0 (must be in front of the camera)
@@ -112,20 +109,20 @@ class NeRFWLoss(nn.Module):
 
             ret['pho_l'] = \
                 inputs['transient_disocc_fw']*(inputs['rgb_fw']-targets['rgbs'])**2 / \
-                inputs['transient_disocc_fw'].sum()
+                inputs['transient_disocc_fw'].mean()
             ret['pho_l'] += \
                 inputs['transient_disocc_bw']*(inputs['rgb_bw']-targets['rgbs'])**2 / \
-                inputs['transient_disocc_bw'].sum()
+                inputs['transient_disocc_bw'].mean()
 
             ret['cyc_l'] = \
                 inputs['transient_disoccs_fw']*torch.abs(inputs['xyzs_fw_bw']-inputs['xyzs_fine']) / \
-                inputs['transient_disoccs_fw'].sum()
+                inputs['transient_disoccs_fw'].mean()
             ret['cyc_l'] += \
                 inputs['transient_disoccs_bw']*torch.abs(inputs['xyzs_bw_fw']-inputs['xyzs_fine']) / \
-                inputs['transient_disoccs_bw'].sum()
+                inputs['transient_disoccs_bw'].mean()
             ret['disocc_l'] = self.lambda_reg * (1-inputs['transient_disocc_fw']+
                                                  1-inputs['transient_disocc_bw'])
-            
+
             N = inputs['xyzs_fine'].shape[1]
             xyzs_w = ray_utils.ndc2world(inputs['xyzs_fine'][:, :int(N*self.z_far)], Ks)
             xyzs_fw_w = ray_utils.ndc2world(inputs['xyzs_fw'][:, :int(N*self.z_far)], Ks)
