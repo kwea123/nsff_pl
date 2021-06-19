@@ -15,6 +15,17 @@ from buffer.replay_buffer import PrioritizedReplayBuffer
 class MonocularDataset(Dataset):
     def __init__(self, root_dir, split='train', img_wh=(512, 288),
                  start_end=(0, 30), cache_dir=None, prioritized_replay=False):
+        """
+        split options:
+            train - training mode (used in train.py) rays are from all images
+            val - validation mode (used in val.py) validate on the middle frame
+            test - test on the training poses and times
+            test_spiral - create spiral poses around the whole trajectory,
+                          time is gradually advanced (only integers for now)
+            test_spiralX - create spiral poses (fixed time) around training pose X
+            test_fixviewX_interpY - fix view to training pose X and interpolate Y frames
+                                    between each integer timestamps, from start to end
+        """
         self.root_dir = root_dir
         self.split = split
         self.img_wh = img_wh
@@ -167,7 +178,7 @@ class MonocularDataset(Dataset):
 
         elif self.split.startswith('test_fixview'):
             # fix to target view and change time
-            target_idx = int(self.split.split('_')[-1])
+            target_idx = int(self.split.split('_')[1][7:])
             self.poses_test = np.tile(self.poses[target_idx], (self.N_frames, 1, 1))
 
         elif self.split.startswith('test_spiral'):
@@ -177,7 +188,7 @@ class MonocularDataset(Dataset):
                 self.poses_test = colmap_utils.create_spiral_poses(
                                     self.poses, radii, n_poses=6*self.N_frames)
             else: # spiral on the target idx
-                target_idx = int(self.split.split('_')[-1])
+                target_idx = int(self.split.split('_')[1][6:])
                 max_trans = np.abs(self.poses[0, 0, 3]-self.poses[-1, 0, 3])/5
                 self.poses_test = colmap_utils.create_wander_path(
                                     self.poses[target_idx], max_trans=max_trans, n_poses=60)

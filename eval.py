@@ -8,7 +8,7 @@ from PIL import Image
 import torch
 from tqdm import tqdm
 
-from models.rendering import render_rays
+from models.rendering import render_rays, interpolate
 from models.nerf import PosEmbedding, NeRF
 
 from utils import load_ckpt, visualize_depth
@@ -30,7 +30,8 @@ def get_opts():
     parser.add_argument('--scene_name', type=str, default='test',
                         help='scene name, used as output folder name')
     parser.add_argument('--split', type=str, default='test',
-                        help='test or test_spiral')
+                        help='''test or test_spiral or 
+                                test_spiralX or test_fixviewX_interpY''')
     parser.add_argument('--img_wh', nargs="+", type=int, default=[512, 288],
                         help='resolution (img_w, img_h) of the image')
     parser.add_argument('--start_end', nargs="+", type=int, default=[0, 100],
@@ -73,7 +74,7 @@ def get_opts():
 
     parser.add_argument('--save_depth', default=False, action="store_true",
                         help='whether to save depth prediction')
-    parser.add_argument('--depth_format', type=str, default='pfm',
+    parser.add_argument('--depth_format', type=str, default='png',
                         choices=['png', 'pfm', 'bytes'],
                         help='which format to save')
 
@@ -84,10 +85,10 @@ def get_opts():
 
 
 @torch.no_grad()
-def batched_inference(models, embeddings,
-                      rays, ts, max_t, N_samples, N_importance,
-                      chunk,
-                      **kwargs):
+def f(models, embeddings,
+      rays, ts, max_t, N_samples, N_importance,
+      chunk,
+      **kwargs):
     """Do batched inference on rays using chunk."""
     B = rays.shape[0]
     results = defaultdict(list)
@@ -105,7 +106,6 @@ def batched_inference(models, embeddings,
                         chunk,
                         test_time=True,
                         **kwargs)
-
         for k, v in rendered_ray_chunks.items():
             results[k] += [v.cpu()]
     for k, v in results.items():
@@ -127,7 +127,14 @@ if __name__ == "__main__":
     dir_name = f'results/{args.dataset_name}/{args.scene_name}'
     os.makedirs(dir_name, exist_ok=True)
 
-    kwargs = {'K': dataset.K}#, 'dataset': dataset}
+    kwargs = {'K': dataset.K, 'dataset': dataset}
+
+    if args.split.startswith('test_fixview') and int(args.split.split('_')[-1][6:])>0:
+        kwargs['output_transient'] = True
+        kwargs['output_transient_flow'] = ['fw', 'bw']
+    else:
+        kwargs['output_transient'] = args.output_transient
+        kwargs['output_transient_flow'] = []
 
     # main process for merging BlenderProc and NeRF
     embedding_xyz = PosEmbedding(9, 10)
@@ -150,39 +157,60 @@ if __name__ == "__main__":
                      in_channels_a=args.N_a,
                      encode_transient=args.encode_t,
                      in_channels_t=args.N_tau,
+                     output_flow=len(kwargs['output_transient_flow'])>0,
                      flow_scale=args.flow_scale).cuda()
     load_ckpt(nerf_fine, args.ckpt_path, model_name='nerf_fine')
     models = {'fine': nerf_fine}
     if args.N_importance > 0:
-        nerf_coarse = NeRF(typ='coarse',
-                           use_viewdir=args.use_viewdir,
-                           encode_transient=args.encode_t,
-                           in_channels_t=args.N_tau).cuda()
-        load_ckpt(nerf_coarse, args.ckpt_path, model_name='nerf_coarse')
-        models['coarse'] = nerf_coarse
-    
-    kwargs['output_transient'] = args.output_transient
-    kwargs['output_transient_flow'] = []
+        raise ValueError("coarse to fine is not ready now! please set N_importance to 0!")
+    #     nerf_coarse = NeRF(typ='coarse',
+    #                        use_viewdir=args.use_viewdir,
+    #                        encode_transient=args.encode_t,
+    #                        in_channels_t=args.N_tau).cuda()
+    #     load_ckpt(nerf_coarse, args.ckpt_path, model_name='nerf_coarse')
+    #     models['coarse'] = nerf_coarse
 
     imgs, psnrs = [], []
 
-    for i in tqdm(range(len(dataset))):
-        sample = dataset[i]
+    last_results = None
+    for i in tqdm(range(48, len(dataset))):
+        if args.split.startswith('test_fixview') and i==len(dataset)-1: # last frame
+            img_pred = last_results['rgb_fine'].view(h, w, 3).numpy()
+            img_pred = (255*np.clip(img_pred, 0, 1)).astype(np.uint8)
+            imgs += [img_pred]
+            imageio.imwrite(os.path.join(dir_name, f'{i:03d}_{int(0):03d}.png'), img_pred)
+        else:
+            sample = dataset[i]
+            ts = None if 'ts' not in sample else sample['ts'].cuda()
+            if last_results is None:
+                results = f(models, embeddings, sample['rays'].cuda(), ts,
+                            dataset.N_frames-1, args.N_samples, args.N_importance,
+                            args.chunk, **kwargs)
+            else: results = last_results
 
-        directions = get_ray_directions(h, w, dataset.K)
-        c2w = sample['c2w']
-        rays_o_r, rays_d_r = get_rays(directions, c2w)
-        shift_near = -min(-1.0, c2w[2, 3])
-        rays_o, rays_d = get_ndc_rays(dataset.K, 1.0,
-                                      shift_near, rays_o_r, rays_d_r)
-
-        ts = None if 'ts' not in sample else sample['ts'].cuda()
-        results = batched_inference(models, embeddings, sample['rays'].cuda(), ts,
-                                    dataset.N_frames-1, args.N_samples, args.N_importance,
-                                    args.chunk, **kwargs)
-        img_pred = np.clip(results['rgb_fine'].view(h, w, 3).numpy(), 0, 1)
+            if args.split.startswith('test_fixview'):
+                interp = int(args.split.split('_')[-1][6:])
+                results_tp1 = f(models, embeddings, sample['rays'].cuda(), ts+1,
+                                dataset.N_frames-1, args.N_samples, args.N_importance,
+                                args.chunk, **kwargs)
+                for dt in np.linspace(0, 1, interp+1)[:-1]: # interp images
+                    if dt == 0:
+                        img_pred = np.clip(results['rgb_fine'].view(h, w, 3).numpy(), 0, 1)
+                    else:
+                        img_pred = interpolate(results, results_tp1, 
+                                        dt, dataset.Ks[sample['cam_ids']], sample['c2w'], (w, h))
+                        img_pred = np.clip(img_pred.numpy(), 0, 1)
+                    img_pred = (255*img_pred).astype(np.uint8)
+                    imgs += [img_pred]
+                    imageio.imwrite(os.path.join(dir_name, f'{i:03d}_{int(dt*100):03d}.png'), img_pred)
+                last_results = results_tp1
+            else: # one image
+                img_pred = np.clip(results['rgb_fine'].view(h, w, 3).numpy(), 0, 1)
+                img_pred_ = (img_pred*255).astype(np.uint8)
+                imgs += [img_pred_]
+                imageio.imwrite(os.path.join(dir_name, f'{i:03d}.png'), img_pred_)
         
-        if args.save_depth:
+        if args.save_depth: # save depth for integer time indices
             depth_pred = results['depth_fine'].view(h, w).numpy()
             depth_pred = np.nan_to_num(depth_pred)
             if args.depth_format == 'png':
@@ -195,10 +223,6 @@ if __name__ == "__main__":
                 with open(f'depth_{i:03d}', 'wb') as f:
                     f.write(depth_pred.tobytes())
 
-        img_pred_ = (img_pred*255).astype(np.uint8)
-        imgs += [img_pred_]
-        imageio.imwrite(os.path.join(dir_name, f'{i:03d}.png'), img_pred_)
-
         if 'rgbs' in sample:
             rgbs = sample['rgbs']
             img_gt = rgbs.view(h, w, 3)
@@ -209,7 +233,7 @@ if __name__ == "__main__":
                 err = (err-err.min())/(err.max()-err.min())
                 err_vis = cv2.applyColorMap((err*255).astype(np.uint8), cv2.COLORMAP_JET)
                 cv2.imwrite(os.path.join(dir_name, f'err_{i:03d}.png'), err_vis)
-        
+
     if psnrs:
         mean_psnr = np.mean(psnrs)
         print(f'Mean PSNR : {mean_psnr:.2f}')
