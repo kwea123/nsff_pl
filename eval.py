@@ -75,7 +75,6 @@ def get_opts():
     parser.add_argument('--save_depth', default=False, action="store_true",
                         help='whether to save depth prediction')
     parser.add_argument('--depth_format', type=str, default='png',
-                        choices=['png', 'pfm', 'bytes'],
                         help='which format to save')
 
     parser.add_argument('--save_error', default=False, action="store_true",
@@ -111,6 +110,13 @@ def f(models, embeddings,
     for k, v in results.items():
         results[k] = torch.cat(v, 0)
     return results
+
+
+def save_depth(depth, h, w, dir_name, filename):
+    depth_pred = np.nan_to_num(depth.view(h, w).numpy())
+    depth_pred_img = visualize_depth(torch.from_numpy(depth_pred)).permute(1, 2, 0).numpy()
+    depth_pred_img = (depth_pred_img*255).astype(np.uint8)
+    imageio.imwrite(os.path.join(dir_name, filename), depth_pred_img)
 
 
 if __name__ == "__main__":
@@ -173,12 +179,14 @@ if __name__ == "__main__":
     imgs, psnrs = [], []
 
     last_results = None
-    for i in tqdm(range(48, len(dataset))):
+    for i in tqdm(range(len(dataset))):
         if args.split.startswith('test_fixview') and i==len(dataset)-1: # last frame
             img_pred = last_results['rgb_fine'].view(h, w, 3).numpy()
             img_pred = (255*np.clip(img_pred, 0, 1)).astype(np.uint8)
             imgs += [img_pred]
             imageio.imwrite(os.path.join(dir_name, f'{i:03d}_{int(0):03d}.png'), img_pred)
+            if args.save_depth:
+                save_depth(last_results['depth_fine'], h, w, dir_name, f'depth_{i:03d}_{int(0):03d}.png')
         else:
             sample = dataset[i]
             ts = None if 'ts' not in sample else sample['ts'].cuda()
@@ -195,33 +203,24 @@ if __name__ == "__main__":
                                 args.chunk, **kwargs)
                 for dt in np.linspace(0, 1, interp+1)[:-1]: # interp images
                     if dt == 0:
-                        img_pred = np.clip(results['rgb_fine'].view(h, w, 3).numpy(), 0, 1)
+                        img_pred = results['rgb_fine'].view(h, w, 3)
+                        depth_pred = results['depth_fine']
                     else:
-                        img_pred = interpolate(results, results_tp1, 
+                        img_pred, depth_pred = interpolate(results, results_tp1, 
                                         dt, dataset.Ks[sample['cam_ids']], sample['c2w'], (w, h))
-                        img_pred = np.clip(img_pred.numpy(), 0, 1)
-                    img_pred = (255*img_pred).astype(np.uint8)
+                    img_pred = (255*np.clip(img_pred.numpy(), 0, 1)).astype(np.uint8)
                     imgs += [img_pred]
                     imageio.imwrite(os.path.join(dir_name, f'{i:03d}_{int(dt*100):03d}.png'), img_pred)
+                    if args.save_depth:
+                        save_depth(depth_pred, h, w, dir_name, f'depth_{i:03d}_{int(dt*100):03d}.png')
                 last_results = results_tp1
             else: # one image
                 img_pred = np.clip(results['rgb_fine'].view(h, w, 3).numpy(), 0, 1)
                 img_pred_ = (img_pred*255).astype(np.uint8)
                 imgs += [img_pred_]
                 imageio.imwrite(os.path.join(dir_name, f'{i:03d}.png'), img_pred_)
-        
-        if args.save_depth: # save depth for integer time indices
-            depth_pred = results['depth_fine'].view(h, w).numpy()
-            depth_pred = np.nan_to_num(depth_pred)
-            if args.depth_format == 'png':
-                depth_pred_ = visualize_depth(torch.from_numpy(depth_pred)).permute(1, 2, 0).numpy()
-                depth_pred_img = (depth_pred_*255).astype(np.uint8)
-                imageio.imwrite(os.path.join(dir_name, f'depth_{i:03d}.png'), depth_pred_img)
-            elif args.depth_format == 'pfm':
-                save_pfm(os.path.join(dir_name, f'depth_{i:03d}.pfm'), depth_pred)
-            elif args.depth_format == 'bytes':
-                with open(f'depth_{i:03d}', 'wb') as f:
-                    f.write(depth_pred.tobytes())
+                if args.save_depth:
+                    save_depth(results['depth_fine'], h, w, dir_name, f'depth_{i:03d}.png')
 
         if 'rgbs' in sample:
             rgbs = sample['rgbs']

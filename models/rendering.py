@@ -385,7 +385,8 @@ def interpolate(results_t, results_tp1, dt, K, c2w, img_wh):
     device = results_t['xyzs_fine'].device
     N_rays, N_samples = results_t['xyzs_fine'].shape[:2]
     w, h = img_wh
-    ret_rgba = torch.zeros((h, w, 4), device=device)
+    rgba = torch.zeros((h, w, 4), device=device)
+    depth = torch.zeros((h, w), device=device)
 
     c2w_ = torch.eye(4)
     c2w_[:3] = c2w
@@ -394,6 +395,7 @@ def interpolate(results_t, results_tp1, dt, K, c2w, img_wh):
     P = K @ w2c # (3, 4) projection matrix
     grid = create_meshgrid(h, w, False, device) # (1, h, w, 2)
     xyzs = results_t['xyzs_fine'] # equals results_tp1['xyzs_fine']
+    zs = rearrange(results_t['zs_fine'], '(h w) n2 -> h w n2', w=w, h=h)
 
     # static buffers
     static_rgb = rearrange(results_t['static_rgbs_fine'],
@@ -452,7 +454,8 @@ def interpolate(results_t, results_tp1, dt, K, c2w, img_wh):
         composed_a = 1 - (1-(transient_rgba_fw[..., 3:]*(1-dt)+
                              transient_rgba_bw[..., 3:]*dt)) * \
                          (1-static_a[:, :, s])
-        ret_rgba[..., :3] += (1-ret_rgba[..., 3:])*composed_rgb
-        ret_rgba[..., 3:] += (1-ret_rgba[..., 3:])*composed_a
+        rgba[..., :3] += (1-rgba[..., 3:])*composed_rgb
+        depth += (1-rgba[..., 3])*composed_a[..., 0]*zs[..., s]
+        rgba[..., 3:] += (1-rgba[..., 3:])*composed_a
 
-    return ret_rgba[..., :3]
+    return rgba[..., :3], depth
