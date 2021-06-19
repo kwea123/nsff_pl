@@ -117,6 +117,7 @@ def save_depth(depth, h, w, dir_name, filename):
     depth_pred_img = visualize_depth(torch.from_numpy(depth_pred)).permute(1, 2, 0).numpy()
     depth_pred_img = (depth_pred_img*255).astype(np.uint8)
     imageio.imwrite(os.path.join(dir_name, filename), depth_pred_img)
+    return depth_pred_img
 
 
 if __name__ == "__main__":
@@ -176,7 +177,7 @@ if __name__ == "__main__":
     #     load_ckpt(nerf_coarse, args.ckpt_path, model_name='nerf_coarse')
     #     models['coarse'] = nerf_coarse
 
-    imgs, psnrs = [], []
+    imgs, depths, psnrs = [], [], []
 
     last_results = None
     for i in tqdm(range(len(dataset))):
@@ -186,7 +187,8 @@ if __name__ == "__main__":
             imgs += [img_pred]
             imageio.imwrite(os.path.join(dir_name, f'{i:03d}_{int(0):03d}.png'), img_pred)
             if args.save_depth:
-                save_depth(last_results['depth_fine'], h, w, dir_name, f'depth_{i:03d}_{int(0):03d}.png')
+                depths += [save_depth(last_results['depth_fine'], h, w,
+                                      dir_name, f'depth_{i:03d}_{int(0):03d}.png')]
         else:
             sample = dataset[i]
             ts = None if 'ts' not in sample else sample['ts'].cuda()
@@ -212,7 +214,8 @@ if __name__ == "__main__":
                     imgs += [img_pred]
                     imageio.imwrite(os.path.join(dir_name, f'{i:03d}_{int(dt*100):03d}.png'), img_pred)
                     if args.save_depth:
-                        save_depth(depth_pred, h, w, dir_name, f'depth_{i:03d}_{int(dt*100):03d}.png')
+                        depths += [save_depth(depth_pred, h, w,
+                                              dir_name, f'depth_{i:03d}_{int(dt*100):03d}.png')]
                 last_results = results_tp1
             else: # one image
                 img_pred = np.clip(results['rgb_fine'].view(h, w, 3).numpy(), 0, 1)
@@ -220,7 +223,8 @@ if __name__ == "__main__":
                 imgs += [img_pred_]
                 imageio.imwrite(os.path.join(dir_name, f'{i:03d}.png'), img_pred_)
                 if args.save_depth:
-                    save_depth(results['depth_fine'], h, w, dir_name, f'depth_{i:03d}.png')
+                    depths += [save_depth(results['depth_fine'], h, w,
+                                          dir_name, f'depth_{i:03d}.png')]
 
         if 'rgbs' in sample:
             rgbs = sample['rgbs']
@@ -240,3 +244,6 @@ if __name__ == "__main__":
 
     imageio.mimsave(os.path.join(dir_name, f'{args.scene_name}.{args.video_format}'),
                     imgs, fps=args.fps)
+    if args.save_depth:
+        imageio.mimsave(os.path.join(dir_name, f'depth_{args.scene_name}.{args.video_format}'),
+                        depths, fps=args.fps)
