@@ -11,8 +11,6 @@ Implementation details are in [models/rendering.py](models/rendering.py).
 
 These modifications empirically produces better result on the `kid-running` scene, as shown below:
 
-**IMPORTANT**: The code for `kid-running` scene is moved to [nsff_orig](https://github.com/kwea123/nsff_pl/tree/nsff_orig) branch (the images are still shown here just to showcase)! The `master` branch will be updated for custom data usage.
-
 ### Full reconstruction
 
 <p align="center">
