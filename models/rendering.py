@@ -381,6 +381,7 @@ def interpolate(results_t, results_tp1, dt, K, c2w, img_wh):
 
     Outputs:
         (img_wh[1], img_wh[0], 3) rgb interpolation result
+        (img_wh[1], img_wh[0]) depth of the interpolation (in NDC)
     """
     device = results_t['xyzs_fine'].device
     N_rays, N_samples = results_t['xyzs_fine'].shape[:2]
