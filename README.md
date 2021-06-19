@@ -81,6 +81,9 @@ Our method also produces smoother depths, although it might not have direct impa
 
 # :key: Training
 
+<details>
+  <summary>Steps</summary>
+
 ## Data preparation
 
 Create a root directory (e.g. `foobar`), create a folder named `frames` and prepare your images (it is recommended to have at least 30 images) under it, so the structure looks like:
@@ -177,6 +180,8 @@ python train.py \
   --optimizer adam --lr 5e-4 --lr_scheduler cosine \
   --exp_name exp
 ```
+  
+</details>
 
 # :mag_right: Testing
 
