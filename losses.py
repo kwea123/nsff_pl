@@ -66,7 +66,6 @@ class NeRFWLoss(nn.Module):
         # are registered as buffers in train.py !
 
     def forward(self, inputs, targets, **kwargs):
-        # if 'weights' in kwargs...
         ret = {}
         ret['col_l'] = (inputs['rgb_fine']-targets['rgbs'])**2
         ret['disp_l'] = self.lambda_geo_d * \
@@ -140,6 +139,7 @@ class NeRFWLoss(nn.Module):
                  torch.abs(sf_bw_w[:, 1:]-sf_bw_w[:, :-1])*sp_w)
 
         for k, loss in ret.items():
+        # if 'weights' in kwargs... use prioritized weights
             if self.topk < 1:
                 num_hard_samples = int(self.topk * loss.numel())
                 loss, _ = torch.topk(loss.flatten(), num_hard_samples)

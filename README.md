@@ -66,8 +66,6 @@ Our method also produces smoother depths, although it might not have direct impa
   </sup>
 </p>
 
-⚠️ However, more experiments on other scenes are needed to finally prove that these modifications produce overall better quality.
-
 
 # :computer: Installation
 
@@ -79,7 +77,7 @@ Our method also produces smoother depths, although it might not have direct impa
 ## Software
 
 * Clone this repo by `git clone --recursive https://github.com/kwea123/nsff_pl`
-* Python>=3.6 (installation via [anaconda](https://www.anaconda.com/distribution/) is recommended, use `conda create -n nsff_pl python=3.6` to create a conda environment and activate it by `conda activate nsff_pl`)
+* Python>=3.7 (installation via [anaconda](https://www.anaconda.com/distribution/) is recommended, use `conda create -n nsff_pl python=3.7` to create a conda environment and activate it by `conda activate nsff_pl`)
 * Python libraries
     * Install core requirements by `pip install -r requirements.txt`
 
@@ -178,7 +176,7 @@ Run the following command (modify the parameters according to `opt.py`):
 python train.py \
   --dataset_name monocular --root_dir $ROOT_DIR \
   --img_wh 512 288 --start_end 0 30 \
-  --N_samples 128 --N_importance 0 --encode_t \
+  --N_samples 128 --N_importance 0 --encode_t --use_viewdir \
   --num_epochs 50 --batch_size 512 \
   --optimizer adam --lr 5e-4 --lr_scheduler cosine \
   --exp_name exp
@@ -203,11 +201,15 @@ python eval.py \
 # :warning: Other differences with the original paper
 
 1.  I add entropy loss as suggested [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields/issues/18#issuecomment-851038816). This allows the person to be "thin" and produces less artifact when the camera is far from the original pose.
-2.  I add a cross entropy loss to encourage static and dynamic weights to peak at different locations (i.e. one sample points is either static or dynamic).
+2.  I explicitly zero the flow at far regions (where `z>0.95`).
+3.  I add a cross entropy loss to encourage static and dynamic weights to peak at different locations (i.e. one sample points is either static or dynamic).
 
 # TODO
 - [x] Add COLMAP reconstruction tutorial (mask out dynamic region).
 - [x] Remove NSFF dependency for data preparation. More precisely, the original code needs quite a lot modifications to work on own data, and the depth/flow are calculated on resized images, which might reduce their accuracy.
 - [x] Add spiral path for testing.
 - [ ] Add mask hard mining at the beginning of training. Or prioritized experience replay.
-- [ ] Exploit motion mask prior like https://free-view-video.github.io/
+
+# Acknowledgment
+
+Thank to the authors of the NSFF paper, [owang](https://github.com/owang) [zhengqili](https://github.com/zhengqili) [sniklaus](https://github.com/sniklaus), for fruitful discussions and supports!

@@ -102,6 +102,10 @@ class NeRF(nn.Module):
                 setattr(self, f"transient_xyz_encoding_{i+1}", layer)
             self.transient_xyz_encoding_final = nn.Linear(W, W)
 
+            if self.use_viewdir:
+                self.transient_dir_encoding = nn.Sequential(
+                        nn.Linear(W+in_channels_dir+self.in_channels_a, W), nn.ReLU(True))
+
             # transient output layers
             self.transient_sigma = nn.Linear(W, 1)
             self.transient_rgb = nn.Sequential(nn.Linear(W, 3), nn.Sigmoid())
@@ -192,20 +196,22 @@ class NeRF(nn.Module):
             if i in self.skips:
                 xyz_ = torch.cat([input_xyz, input_t, xyz_], 1)
             xyz_ = getattr(self, f"transient_xyz_encoding_{i+1}")(xyz_)
-        transient_xyz_encoding_final = self.transient_xyz_encoding_final(xyz_)
-        transient_sigma = self.transient_sigma(transient_xyz_encoding_final)
-
-        transient_rgb = self.transient_rgb(transient_xyz_encoding_final)
+        feat_final = self.transient_xyz_encoding_final(xyz_)
+        transient_sigma = self.transient_sigma(feat_final)
+        if self.use_viewdir:
+            dir_encoding_input = torch.cat([feat_final, input_dir, input_a], 1)
+            feat_final = self.transient_dir_encoding(dir_encoding_input)
+        transient_rgb = self.transient_rgb(feat_final)
 
         transient_list = [transient_rgb, transient_sigma] # (B, 4)
         if 'fw' in output_transient_flow:
-            transient_flow_fw = self.flow_scale * self.transient_flow_fw(transient_xyz_encoding_final)
+            transient_flow_fw = self.flow_scale * self.transient_flow_fw(feat_final)
             transient_list += [transient_flow_fw]
         if 'bw' in output_transient_flow:
-            transient_flow_bw = self.flow_scale * self.transient_flow_bw(transient_xyz_encoding_final)
+            transient_flow_bw = self.flow_scale * self.transient_flow_bw(feat_final)
             transient_list += [transient_flow_bw]
         if 'disocc' in output_transient_flow:
-            transient_list += [self.transient_disocc(transient_xyz_encoding_final)]
+            transient_list += [self.transient_disocc(feat_final)]
 
         transient = torch.cat(transient_list, 1) # (B, 12)
         if output_static:

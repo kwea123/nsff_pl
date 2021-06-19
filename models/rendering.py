@@ -127,8 +127,8 @@ def render_rays(models,
             noise = torch.randn_like(transient_sigmas_w) * noise_std
             transient_alphas_w = 1-torch.exp(-deltas*act(transient_sigmas_w+noise))
             alphas_w = 1-(1-static_alphas)*(1-transient_alphas_w)
-            alphas_w_shifted = torch.cat([torch.ones_like(alphas_w[:, :1]), 1-alphas_w], -1)
-            transmittance_w = torch.cumprod(alphas_w_shifted[:, :-1], -1)
+            alphas_w_sh = torch.cat([torch.ones_like(alphas_w[:, :1]), 1-alphas_w], -1)
+            transmittance_w = torch.cumprod(alphas_w_sh[:, :-1], -1)
             static_weights_w = rearrange(static_alphas*transmittance_w, 'n1 n2 -> n1 n2 1')
             transient_weights_w = rearrange(transient_alphas_w*transmittance_w, 'n1 n2 -> n1 n2 1')
             static_rgb_map_w = reduce(static_weights_w*static_rgbs, 'n1 n2 c -> n1 c', 'sum')
@@ -204,14 +204,12 @@ def render_rays(models,
         deltas = torch.cat([deltas, 100*torch.ones_like(deltas[:, :1])], -1)
 
         noise = torch.randn_like(static_sigmas) * noise_std
-        results[f'static_sigmas_{typ}'] = static_sigmas = act(static_sigmas+noise)
-        alphas = 1-torch.exp(-deltas*static_sigmas)
+        alphas = 1-torch.exp(-deltas*act(static_sigmas+noise))
 
         if output_transient:
             static_alphas = alphas
             noise = torch.randn_like(transient_sigmas) * noise_std
-            results[f'transient_sigmas_{typ}'] = transient_sigmas = act(transient_sigmas+noise)
-            transient_alphas = 1-torch.exp(-deltas*transient_sigmas)
+            transient_alphas = 1-torch.exp(-deltas*act(transient_sigmas+noise))
             alphas = 1-(1-static_alphas)*(1-transient_alphas)
 
             if (not test_time) and output_transient_flow: # render with flowed-xyzs
@@ -231,8 +229,8 @@ def render_rays(models,
                 results['xyzs_fw_bw'] = xyz_fw + transient_flows_fw_bw
                 results['xyzs_bw_fw'] = xyz_bw + transient_flows_fw_bw
 
-        alphas_shifted = torch.cat([torch.ones_like(alphas[:, :1]), 1-alphas], -1)
-        transmittance = torch.cumprod(alphas_shifted[:, :-1], -1)
+        alphas_sh = torch.cat([torch.ones_like(alphas[:, :1]), 1-alphas], -1)
+        transmittance = torch.cumprod(alphas_sh[:, :-1], -1)
 
         if output_transient:
             static_weights = static_alphas * transmittance
@@ -263,15 +261,16 @@ def render_rays(models,
             transient_rgb_map = reduce(transient_weights_*transient_rgbs, 'n1 n2 c -> n1 c', 'sum')
             results[f'rgb_{typ}'] = static_rgb_map + transient_rgb_map
             results[f'transient_alpha_{typ}'] = reduce(transient_weights, 'n1 n2 -> n1', 'sum')
+            results[f'transient_rgb_{typ}'] = transient_rgb_map + \
+                0.8*(1-rearrange(results[f'transient_alpha_{typ}'], 'n1 -> n1 1')) # gray bg
 
             # Compute also depth and rgb when only one field exists.
             # The result is different from when both fields exist, since the transimttance
             # will change.
-            static_alphas_shifted = \
+            static_alphas_sh = \
                 torch.cat([torch.ones_like(static_alphas[:, :1]), 1-static_alphas], -1)
-            static_transmittance = torch.cumprod(static_alphas_shifted[:, :-1], -1)
-            results[f'_static_weights_{typ}'] = \
-                _static_weights = static_alphas * static_transmittance
+            static_transmittance = torch.cumprod(static_alphas_sh[:, :-1], -1)
+            _static_weights = static_alphas * static_transmittance
             _static_weights_ = rearrange(_static_weights, 'n1 n2 -> n1 n2 1')
             results[f'_static_rgb_{typ}'] = \
                 reduce(_static_weights_*static_rgbs, 'n1 n2 c -> n1 c', 'sum')
@@ -297,20 +296,6 @@ def render_rays(models,
                     results['transient_disoccs_bw'] = \
                         rearrange(transient_disoccs_bw, 'n1 n2 -> n1 n2 1')
 
-            if test_time:
-                # # compute transient weight when it exists solely.
-                # transient_alphas_shifted = \
-                #     torch.cat([torch.ones_like(transient_alphas[:, :1]), 1-transient_alphas], -1)
-                # transient_transmittance = torch.cumprod(transient_alphas_shifted[:, :-1], -1)
-                # _transient_weights = transient_alphas * transient_transmittance
-                # _transient_weights_ = rearrange(_transient_weights, 'n1 n2 -> n1 n2 1')
-                # results[f'_transient_depth_{typ}'] = \
-                #     reduce(_transient_weights*zs, 'n1 n2 -> n1', 'sum')
-                results[f'transient_rgb_{typ}'] = transient_rgb_map + \
-                    0.8*(1-rearrange(results['transient_alpha_fine'], 'n1 -> n1 1')) # gray bg
-                # results[f'transient_depth_{typ}'] = \
-                #     reduce(transient_weights*zs, 'n1 n2 -> n1', 'sum')
-                
         else: # no transient field
             results[f'rgb_{typ}'] = reduce(weights_*static_rgbs, 'n1 n2 c -> n1 c', 'sum')
 
