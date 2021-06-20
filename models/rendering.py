@@ -280,10 +280,10 @@ def render_rays(models,
             if output_transient_flow:
                 results['xyz_fine'] = reduce(weights_*xyz, 'n1 n2 c-> n1 c', 'sum')
                 results['transient_flow_fw'] = \
-                    reduce(transient_weights_*transient_flows_fw, 'n1 n2 c -> n1 c', 'sum')
+                    reduce(weights_*transient_flows_fw, 'n1 n2 c -> n1 c', 'sum')
                 results['xyz_fw'] = results['xyz_fine']+results['transient_flow_fw']
                 results['transient_flow_bw'] = \
-                    reduce(transient_weights_*transient_flows_bw, 'n1 n2 c -> n1 c', 'sum')
+                    reduce(weights_*transient_flows_bw, 'n1 n2 c -> n1 c', 'sum')
                 results['xyz_bw'] = results['xyz_fine']+results['transient_flow_bw']
 
                 if (not test_time) and 'disocc' in output_transient_flow:

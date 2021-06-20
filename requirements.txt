@@ -5,7 +5,8 @@ einops==0.3.0
 test-tube==0.7.5
 kornia==0.5.2
 opencv-python==4.5.2.52
-matplotlib==3.3.4
+scipy==1.6.3
+matplotlib==3.4.2
 jupyter
 imageio==2.9.0
 imageio-ffmpeg==0.4.4
