@@ -52,11 +52,11 @@ The color of our method is more vivid and closer to the GT images both qualitati
 Our method also produces smoother depths, although it might not have direct impact on image quality.
 
 <p align="center">
-  <img src="https://user-images.githubusercontent.com/11364490/121126332-f5231780-c862-11eb-89a6-98558e479c69.png", width="48%">
-  <img src="https://user-images.githubusercontent.com/11364490/121126404-0ff58c00-c863-11eb-9b31-72824b944ed1.png", width="48%">
+  <img src="https://user-images.githubusercontent.com/11364490/121126332-f5231780-c862-11eb-89a6-98558e479c69.png", width="40%">
+  <img src="https://user-images.githubusercontent.com/11364490/121126404-0ff58c00-c863-11eb-9b31-72824b944ed1.png", width="40%">
   <br>
-  <img src="https://user-images.githubusercontent.com/11364490/121126294-e9375580-c862-11eb-8a36-e560b4318621.png", width="48%">
-  <img src="https://user-images.githubusercontent.com/11364490/121126457-2865a680-c863-11eb-8fbd-aad471efbe3d.png", width="48%">
+  <img src="https://user-images.githubusercontent.com/11364490/121126294-e9375580-c862-11eb-8a36-e560b4318621.png", width="40%">
+  <img src="https://user-images.githubusercontent.com/11364490/121126457-2865a680-c863-11eb-8fbd-aad471efbe3d.png", width="40%">
   <br>
   <sup>Top left: static depth from this repo. Top right: full depth from this repo. <br> Bottom left: static depth from the original repo. Bottom right: full depth from the original repo.
   </sup>
