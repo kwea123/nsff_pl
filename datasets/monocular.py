@@ -5,6 +5,7 @@ import glob
 import numpy as np
 import os
 from collections import defaultdict
+from scipy.stats import linregress
 from PIL import Image
 from torchvision import transforms as T
 
@@ -78,16 +79,45 @@ class MonocularDataset(Dataset):
             t = im.tvec.reshape(3, 1)
             w2c_mats += [np.concatenate([np.concatenate([R, t], 1), bottom], 0)]
         w2c_mats = np.stack(w2c_mats, 0)[perm]
-        poses = np.linalg.inv(w2c_mats)[self.start_frame:self.end_frame, :3] # (N_images, 3, 4)
+        w2c_mats = w2c_mats[self.start_frame:self.end_frame] # (N_frames, 4, 4)
+        poses = np.linalg.inv(w2c_mats)[:, :3] # (N_frames, 3, 4)
 
         # read bounds
         pts3d = colmap_utils.read_points3d_binary(os.path.join(self.root_dir,
                                                                'sparse/0/points3D.bin'))
-        xyz_world = [pts3d[p_id].xyz for p_id in pts3d]
-        xyz_world = np.concatenate([np.array(xyz_world), np.ones((len(xyz_world), 1))], -1)
-        xyz_cam0 = (xyz_world @ w2c_mats[self.start_frame].T)[:, :3] # xyz in the first frame
-        xyz_cam0 = xyz_cam0[xyz_cam0[:, 2]>0]
-        self.nearest_depth = np.percentile(xyz_cam0[:, 2], 5) * 0.75
+        pts_w = np.zeros((1, 3, len(pts3d))) # (1, 3, N_points)
+        visibilities = np.zeros((len(poses), len(pts3d))) # (N_frames, N_points)
+        for i, k in enumerate(pts3d):
+            pts_w[0, :, i] = pts3d[k].xyz
+            for j in pts3d[k].image_ids:
+                if self.start_frame <= j-1 < self.end_frame:
+                    visibilities[j-1-self.start_frame, i] = 1
+
+        # TODO: take care of forward moving scenes...
+        min_depth = 1e8
+        for i in range(self.N_frames):
+            # for each image, compute the nearest depth according to real depth from COLMAP
+            # and the disparity estimated by monodepth.
+            # (using linear regression to find the best scale and shift)
+            disp = cv2.imread(self.disp_paths[i], cv2.IMREAD_ANYDEPTH).astype(np.float32)
+            disp = cv2.resize(disp, self.img_wh, interpolation=cv2.INTER_NEAREST)
+            pts_w_ = np.concatenate([pts_w[0], np.ones((1, len(pts3d)))], 0) # (4, N_points)
+            visibility_i = visibilities[i] # (N_points) 1 if visible
+            pts_w_v = pts_w_[:, visibility_i==1] # (4, N_points_v)
+            pts_c_v = (w2c_mats[i] @ pts_w_v)[:3] # (3, N_points_v)
+            pts_uvd_v = self.K @ pts_c_v
+            pts_uv_v = (pts_uvd_v[:2]/pts_uvd_v[2:]).T # (N_points_v, 2)
+            pts_uv_v = pts_uv_v.astype(np.int) # to integer pixel coordinates
+            pts_uv_v[:, 0] = np.clip(pts_uv_v[:, 0], 0, self.img_wh[0]-1)
+            pts_uv_v[:, 1] = np.clip(pts_uv_v[:, 1], 0, self.img_wh[1]-1)
+            pts_d_v = pts_uvd_v[2]
+            reg = linregress(1/pts_d_v, disp[pts_uv_v[:, 1], pts_uv_v[:, 0]])
+            if reg.rvalue**2 > 0.9: # if the regression is authentic
+                min_depth = min(min_depth, reg.slope/(np.percentile(disp, 95)-reg.intercept))
+            else:
+                min_depth = min(min_depth, np.percentile(pts_d_v, 5))
+
+        self.nearest_depth = min_depth * 0.75
 
         # Step 2: correct poses
         # change "right down front" of COLMAP to "right up back"
