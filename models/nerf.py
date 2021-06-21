@@ -84,11 +84,13 @@ class NeRF(nn.Module):
 
         if self.use_viewdir:
             self.static_dir_encoding = nn.Sequential(
-                        nn.Linear(W+in_channels_dir+self.in_channels_a, W), nn.ReLU(True))
+                        nn.Linear(W+in_channels_dir+self.in_channels_a, W//2), nn.ReLU(True))
 
         # static output layers
         self.static_sigma = nn.Linear(W, 1)
-        self.static_rgb = nn.Sequential(nn.Linear(W, 3), nn.Sigmoid())
+        # with torch.no_grad():
+        #     self.static_sigma.bias.fill_(1)
+        self.static_rgb = nn.Sequential(nn.Linear(W//2, 3), nn.Sigmoid())
 
         if self.encode_transient:
             for i in range(D):
@@ -102,9 +104,9 @@ class NeRF(nn.Module):
                 setattr(self, f"transient_xyz_encoding_{i+1}", layer)
             self.transient_xyz_encoding_final = nn.Linear(W, W)
 
-            if self.use_viewdir:
-                self.transient_dir_encoding = nn.Sequential(
-                        nn.Linear(W+in_channels_dir+self.in_channels_a, W), nn.ReLU(True))
+            # if self.use_viewdir:
+            #     self.transient_dir_encoding = nn.Sequential(
+            #             nn.Linear(W+in_channels_dir+self.in_channels_a, W), nn.ReLU(True))
 
             # transient output layers
             self.transient_sigma = nn.Linear(W, 1)
@@ -114,8 +116,8 @@ class NeRF(nn.Module):
                 # predict forward and backward flows
                 self.transient_flow_fw = nn.Sequential(nn.Linear(W, 3), nn.Tanh())
                 self.transient_flow_bw = nn.Sequential(nn.Linear(W, 3), nn.Tanh())
-                # forward and backward disocclusion
-                self.transient_disocc = nn.Sequential(nn.Linear(W, 2), nn.Sigmoid())
+                # # forward and backward disocclusion
+                # self.transient_disocc = nn.Sequential(nn.Linear(W, 2), nn.Sigmoid())
 
     def forward(self, x, sigma_only=False, 
                 output_static=True, output_transient=True,
@@ -198,9 +200,9 @@ class NeRF(nn.Module):
             xyz_ = getattr(self, f"transient_xyz_encoding_{i+1}")(xyz_)
         feat_final = self.transient_xyz_encoding_final(xyz_)
         transient_sigma = self.transient_sigma(feat_final)
-        if self.use_viewdir:
-            dir_encoding_input = torch.cat([feat_final, input_dir, input_a], 1)
-            feat_final = self.transient_dir_encoding(dir_encoding_input)
+        # if self.use_viewdir:
+        #     dir_encoding_input = torch.cat([feat_final, input_dir, input_a], 1)
+        #     feat_final = self.transient_dir_encoding(dir_encoding_input)
         transient_rgb = self.transient_rgb(feat_final)
 
         transient_list = [transient_rgb, transient_sigma] # (B, 4)
@@ -210,8 +212,8 @@ class NeRF(nn.Module):
         if 'bw' in output_transient_flow:
             transient_flow_bw = self.flow_scale * self.transient_flow_bw(feat_final)
             transient_list += [transient_flow_bw]
-        if 'disocc' in output_transient_flow:
-            transient_list += [self.transient_disocc(feat_final)]
+        # if 'disocc' in output_transient_flow:
+        #     transient_list += [self.transient_disocc(feat_final)]
 
         transient = torch.cat(transient_list, 1) # (B, 12)
         if output_static:

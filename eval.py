@@ -226,7 +226,7 @@ if __name__ == "__main__":
                     depths += [save_depth(results['depth_fine'], h, w,
                                           dir_name, f'depth_{i:03d}.png')]
 
-        if 'rgbs' in sample:
+        if args.split == 'test':
             rgbs = sample['rgbs']
             img_gt = rgbs.view(h, w, 3)
             psnrs += [metrics.psnr(img_gt, img_pred).item()]
