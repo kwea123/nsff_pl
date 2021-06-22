@@ -237,6 +237,7 @@ More specifically, the `split` argument specifies which novel view to generate:
 1.  I add entropy loss as suggested [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields/issues/18#issuecomment-851038816). This allows the person to be "thin" and produces less artifact when the camera is far from the original pose.
 2.  I explicitly zero the flow at far regions (where `z>0.95`).
 3.  I add a cross entropy loss to encourage static and dynamic weights to peak at different locations (i.e. one sample points is either static or dynamic).
+4.  In pose reconstruction, the original authors use **the entire image** to reconstruct the poses, without masking out the dynamic region. In my opinion this strategy might lead to totally wrong pose estimation in some cases, so I opt to reconstruct the poses with dynamic region masked out. In order to set the near plane correctly, I use COLMAP combined with monodepth to get the minimum depth.
 
 # TODO
 - [x] Add COLMAP reconstruction tutorial (mask out dynamic region).
