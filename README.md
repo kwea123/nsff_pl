@@ -63,7 +63,7 @@ The implementation is verified on several sequences, and produces visually plaus
   <img src="assets/kid_fv8.gif", width="40%">
 </p>
 
-The color of our method is more vivid and closer to the GT images both qualitatively and quantitatively (not because of gif compression). Also, the background is more stable and cleaner.
+The color of our method is more vivid and closer to the GT images both qualitatively and quantitatively (not because of gif compression). Also, even **without** any kind of supervision (either direction or self supervision), the network learns to separate the foreground and the background more cleanly than the original implementation, which is unexpected!
 
 <!-- ### Bonus - Depth
 
