@@ -11,7 +11,7 @@ The main modifications are the followings:
   <br>
   <sup>Top: Reference image. Center: Warped images, artifacts appear at boundaries. Bottom: Estimated disocclusion.</sup>
 </p>
-As training goes, the disocclusion tends to get close to 1, i.e. occlusion does not exist even in warping. In my opinion, this means the empty space learns to "move a little" to avoid the space occupied by dynamic objects.
+As training goes, the disocclusion tends to get close to 1 almost everywhere, i.e. occlusion does not exist even in warping. In my opinion, this means the empty space learns to "move a little" to avoid the space occupied by dynamic objects (although the network has *never* been trained to do so).
 
 3.  **Compose static dynamic also in image warping.**
 
