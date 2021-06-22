@@ -83,8 +83,8 @@ Our method also produces smoother depths, although it might not have direct impa
 ### More results
 
 <p align="center">
-  <img src="https://storage.cloud.google.com/kwea123_dataset/nsff/aed9_fv25.gif", width="40%">
-  <img src="https://storage.cloud.google.com/kwea123_dataset/nsff/aed9_sp25.gif", width="40%">
+  <img src="https://storage.googleapis.com/kwea123_dataset/nsff/aed9_fv25.gif", width="40%">
+  <img src="https://storage.googleapis.com/kwea123_dataset/nsff/aed9_sp25.gif", width="40%">
   <br>
   <img src="https://user-images.githubusercontent.com/11364490/121126294-e9375580-c862-11eb-8a36-e560b4318621.png", width="40%">
   <img src="https://user-images.githubusercontent.com/11364490/121126457-2865a680-c863-11eb-8fbd-aad471efbe3d.png", width="40%">
