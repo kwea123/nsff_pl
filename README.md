@@ -86,6 +86,9 @@ Our method also produces smoother depths, although it might not have direct impa
   <img src="https://user-images.githubusercontent.com/11364490/122894224-f6cffd80-d381-11eb-96b8-25a6d9136dbf.gif", width="40%">
   <img src="https://user-images.githubusercontent.com/11364490/122894158-ea4ba500-d381-11eb-9dd9-1292b892bba9.gif", width="40%">
   <br>
+  <img src="https://user-images.githubusercontent.com/11364490/122915244-82ec2000-d396-11eb-98d1-fc58bdd6fbf7.gif", width="40%">
+  <img src="https://user-images.githubusercontent.com/11364490/122915260-87b0d400-d396-11eb-8159-5c6ac9caabfd.gif", width="40%">
+  <br>
   <img src="https://user-images.githubusercontent.com/11364490/122893961-bf615100-d381-11eb-9171-ec19c3cd3832.gif", width="40%">
   <img src="https://user-images.githubusercontent.com/11364490/122894027-d011c700-d381-11eb-9d7e-213955702634.gif", width="40%">
   <br>
