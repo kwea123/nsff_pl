@@ -19,6 +19,7 @@ from datasets.depth_utils import *
 from datasets.ray_utils import *
 
 torch.backends.cudnn.benchmark = True
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_opts():
     parser = ArgumentParser()
@@ -126,9 +127,8 @@ if __name__ == "__main__":
 
     kwargs = {'root_dir': args.root_dir,
               'split': args.split,
-              'img_wh': (w, h)}
-    if args.dataset_name == 'monocular':
-        kwargs['start_end'] = tuple(args.start_end)
+              'img_wh': (w, h),
+              'start_end': tuple(args.start_end)}
     dataset = dataset_dict[args.dataset_name](**kwargs)
 
     dir_name = f'results/{args.dataset_name}/{args.scene_name}'
@@ -143,18 +143,14 @@ if __name__ == "__main__":
         kwargs['output_transient'] = args.output_transient
         kwargs['output_transient_flow'] = []
 
-    # main process for merging BlenderProc and NeRF
-    embedding_xyz = PosEmbedding(9, 10)
-    embedding_dir = PosEmbedding(3, 4)
-    embeddings = {'xyz': embedding_xyz,
-                  'dir': embedding_dir}
+    embeddings = {'xyz': PosEmbedding(9, 10), 'dir': PosEmbedding(3, 4)}
 
     if args.encode_a:
-        embedding_a = torch.nn.Embedding(args.N_vocab, args.N_a).cuda()
+        embedding_a = torch.nn.Embedding(args.N_vocab, args.N_a).to(device)
         embeddings['a'] = embedding_a
         load_ckpt(embedding_a, args.ckpt_path, 'embedding_a')
     if args.encode_t:
-        embedding_t = torch.nn.Embedding(args.N_vocab, args.N_tau).cuda()
+        embedding_t = torch.nn.Embedding(args.N_vocab, args.N_tau).to(device)
         embeddings['t'] = embedding_t
         load_ckpt(embedding_t, args.ckpt_path, 'embedding_t')
 
@@ -165,7 +161,7 @@ if __name__ == "__main__":
                      encode_transient=args.encode_t,
                      in_channels_t=args.N_tau,
                      output_flow=len(kwargs['output_transient_flow'])>0,
-                     flow_scale=args.flow_scale).cuda()
+                     flow_scale=args.flow_scale).to(device)
     load_ckpt(nerf_fine, args.ckpt_path, model_name='nerf_fine')
     models = {'fine': nerf_fine}
     if args.N_importance > 0:
@@ -173,7 +169,7 @@ if __name__ == "__main__":
     #     nerf_coarse = NeRF(typ='coarse',
     #                        use_viewdir=args.use_viewdir,
     #                        encode_transient=args.encode_t,
-    #                        in_channels_t=args.N_tau).cuda()
+    #                        in_channels_t=args.N_tau).to(device)
     #     load_ckpt(nerf_coarse, args.ckpt_path, model_name='nerf_coarse')
     #     models['coarse'] = nerf_coarse
 
@@ -191,16 +187,18 @@ if __name__ == "__main__":
                                       dir_name, f'depth_{i:03d}_{int(0):03d}.png')]
         else:
             sample = dataset[i]
-            ts = None if 'ts' not in sample else sample['ts'].cuda()
+            if args.split.startswith('test_spiral') and 'view_dir' not in kwargs:
+                kwargs['view_dir'] = dataset[0]['rays'][:, 3:6].to(device)
+            ts = None if 'ts' not in sample else sample['ts'].to(device)
             if last_results is None:
-                results = f(models, embeddings, sample['rays'].cuda(), ts,
+                results = f(models, embeddings, sample['rays'].to(device), ts,
                             dataset.N_frames-1, args.N_samples, args.N_importance,
                             args.chunk, **kwargs)
             else: results = last_results
 
             if args.split.startswith('test_fixview'):
                 interp = int(args.split.split('_')[-1][6:])
-                results_tp1 = f(models, embeddings, sample['rays'].cuda(), ts+1,
+                results_tp1 = f(models, embeddings, sample['rays'].to(device), ts+1,
                                 dataset.N_frames-1, args.N_samples, args.N_importance,
                                 args.chunk, **kwargs)
                 for dt in np.linspace(0, 1, interp+1)[:-1]: # interp images
