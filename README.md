@@ -51,13 +51,13 @@ The implementation is verified on several sequences, and produces visually plaus
   <sup>Left: this repo. Right: pretrained model of the original repo.</sup>
 </p>
 
-### Novel view synthesis (spiral)
+### Novel view synthesis (view 8, spiral)
 
 <p align="center">
   <img src="https://user-images.githubusercontent.com/11364490/122886630-1879b680-d37b-11eb-8265-7a418d44d24a.gif", width="40%">
 </p>
 
-### Time interpolation
+### Time interpolation (view 8, add 10 frames between each integer time from time 0 to 29)
 
 <p align="center">
   <img src="assets/kid_fv8.gif", width="40%">
