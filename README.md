@@ -60,7 +60,7 @@ The implementation is verified on several sequences, and produces visually plaus
 ### Time interpolation (view 8, add 10 frames between each integer time from time 0 to 29)
 
 <p align="center">
-  <img src="assets/kid_fv8.gif", width="40%">
+  <img src="https://user-images.githubusercontent.com/11364490/122915609-e0806c80-d396-11eb-934d-65f9d107b5ce.gif", width="40%">
 </p>
 
 The color of our method is more vivid and closer to the GT images both qualitatively and quantitatively (not because of gif compression). Also, even **without** any kind of supervision (either direction or self supervision), the network learns to separate the foreground and the background more cleanly than the original implementation, which is unexpected!
