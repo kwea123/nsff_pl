@@ -5,11 +5,12 @@ Neural Scene Flow Fields using pytorch-lightning. This repo reimplements the [NS
 The main modifications are the followings:
 
 1.  **Remove the blending weight in static NeRF. I adopt the addition strategy in [NeRF-W](https://github.com/kwea123/nerf_pl/tree/nerfw).**
-2.  **Compose static dynamic also in image warping.**
+2.  **Remove disocclusion head. I use warped dynamic weights as an indicator of whether occlusion occurs.** At the beginning of training, this indicator acts reliably as shown below:. As training goes, the disocclusion tends to get close to 1, i.e. occlusion does not exist even in warping. In my opinion, this means the empty space learns to "move a little" to avoid the space occupied by dynamic objects.
+3.  **Compose static dynamic also in image warping.**
 
 Implementation details are in [models/rendering.py](models/rendering.py).
 
-These modifications empirically produces better result on the `kid-running` scene, as shown below:
+The implementation is verified on several sequences, and produces visually plausible results. Qualitatively, these modifications produces better result on the `kid-running` scene compared to the original repo.
 
 ### Full reconstruction
 
@@ -45,9 +46,11 @@ These modifications empirically produces better result on the `kid-running` scen
 
 ### Novel view synthesis (spiral)
 
+[kid_sp8](https://user-images.githubusercontent.com/11364490/122886630-1879b680-d37b-11eb-8265-7a418d44d24a.gif)
+
 The color of our method is more vivid and closer to the GT images both qualitatively and quantitatively (not because of gif compression). Also, the background is more stable and cleaner.
 
-### Bonus - Depth
+<!-- ### Bonus - Depth
 
 Our method also produces smoother depths, although it might not have direct impact on image quality.
 
@@ -60,7 +63,9 @@ Our method also produces smoother depths, although it might not have direct impa
   <br>
   <sup>Top left: static depth from this repo. Top right: full depth from this repo. <br> Bottom left: static depth from the original repo. Bottom right: full depth from the original repo.
   </sup>
-</p>
+</p> -->
+
+### More results
 
 
 # :computer: Installation
