@@ -65,7 +65,7 @@ The implementation is verified on several sequences, and produces visually plaus
 
 The color of our method is more vivid and closer to the GT images both qualitatively and quantitatively (not because of gif compression). Also, even **without** any kind of supervision (either direction or self supervision), the network learns to separate the foreground and the background more cleanly than the original implementation, which is unexpected!
 
-<!-- ### Bonus - Depth
+### Bonus - Depth
 
 Our method also produces smoother depths, although it might not have direct impact on image quality.
 
@@ -78,7 +78,7 @@ Our method also produces smoother depths, although it might not have direct impa
   <br>
   <sup>Top left: static depth from this repo. Top right: full depth from this repo. <br> Bottom left: static depth from the original repo. Bottom right: full depth from the original repo.
   </sup>
-</p> -->
+</p>
 
 ### More results
 
@@ -91,6 +91,9 @@ Our method also produces smoother depths, although it might not have direct impa
   <br>
   <img src="https://user-images.githubusercontent.com/11364490/122893961-bf615100-d381-11eb-9171-ec19c3cd3832.gif", width="40%">
   <img src="https://user-images.githubusercontent.com/11364490/122894027-d011c700-d381-11eb-9d7e-213955702634.gif", width="40%">
+  <br>
+  <img src="https://user-images.githubusercontent.com/11364490/122926467-d7959800-d3a2-11eb-9b6a-253d1509afb2.gif", width="40%">
+  <img src="https://user-images.githubusercontent.com/11364490/122926576-f7c55700-d3a2-11eb-90a6-70340ec6d0ce.gif", width="40%">
   <br>
   </sup>
 </p>
