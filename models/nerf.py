@@ -84,13 +84,11 @@ class NeRF(nn.Module):
 
         if self.use_viewdir:
             self.static_dir_encoding = nn.Sequential(
-                        nn.Linear(W+in_channels_dir+self.in_channels_a, W//2), nn.ReLU(True))
+                        nn.Linear(W+in_channels_dir+self.in_channels_a, W), nn.ReLU(True))
 
         # static output layers
         self.static_sigma = nn.Linear(W, 1)
-        # with torch.no_grad():
-        #     self.static_sigma.bias.fill_(1)
-        self.static_rgb = nn.Sequential(nn.Linear(W//2, 3), nn.Sigmoid())
+        self.static_rgb = nn.Sequential(nn.Linear(W, 3), nn.Sigmoid())
 
         if self.encode_transient:
             for i in range(D):
@@ -116,8 +114,6 @@ class NeRF(nn.Module):
                 # predict forward and backward flows
                 self.transient_flow_fw = nn.Sequential(nn.Linear(W, 3), nn.Tanh())
                 self.transient_flow_bw = nn.Sequential(nn.Linear(W, 3), nn.Tanh())
-                # # forward and backward disocclusion
-                # self.transient_disocc = nn.Sequential(nn.Linear(W, 2), nn.Sigmoid())
 
     def forward(self, x, sigma_only=False, 
                 output_static=True, output_transient=True,
@@ -207,13 +203,9 @@ class NeRF(nn.Module):
 
         transient_list = [transient_rgb, transient_sigma] # (B, 4)
         if 'fw' in output_transient_flow:
-            transient_flow_fw = self.flow_scale * self.transient_flow_fw(feat_final)
-            transient_list += [transient_flow_fw]
+            transient_list += [self.flow_scale * self.transient_flow_fw(feat_final)]
         if 'bw' in output_transient_flow:
-            transient_flow_bw = self.flow_scale * self.transient_flow_bw(feat_final)
-            transient_list += [transient_flow_bw]
-        # if 'disocc' in output_transient_flow:
-        #     transient_list += [self.transient_disocc(feat_final)]
+            transient_list += [self.flow_scale * self.transient_flow_bw(feat_final)]
 
         transient = torch.cat(transient_list, 1) # (B, 12)
         if output_static:

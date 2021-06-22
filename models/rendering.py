@@ -107,6 +107,7 @@ def render_rays(models,
             Outputs:
                 rgb_map_warped: (N_rays, 3) warped rendering
                 transient_flows_: (N_rays, N_samples_, 3) warped points' fw/bw flow
+                transient_weights_w: (N_rays, N_samples) warped transient weights, used to infer occlusion
             """
             out_chunks = []
             for i in range(0, B, chunk):
@@ -136,10 +137,6 @@ def render_rays(models,
                 reduce(transient_weights_w*transient_rgbs_w, 'n1 n2 c -> n1 c', 'sum')
             rgb_map_w = static_rgb_map_w + transient_rgb_map_w
 
-            # transient_alphas_w_sh = \
-            #     torch.cat([torch.ones_like(transient_alphas_w[:, :1]), 1-transient_alphas_w], -1)
-            # transient_transmittance_w = torch.cumprod(transient_alphas_w_sh[:, :-1], -1)
-            # _transient_weights_w = transient_alphas_w * transient_transmittance_w
             return rgb_map_w, transient_flows_w, transient_weights_w[..., 0]
 
         typ = model.typ
@@ -189,9 +186,6 @@ def render_rays(models,
                     results['transient_flows_bw'] = transient_flows_bw = out[..., 11:14]
                     transient_flows_fw[zs>z_far] = 0
                     transient_flows_bw[zs>z_far] = 0
-                # if 'disocc' in output_transient_flow:
-                #     transient_disoccs_fw = out[..., 14]
-                #     transient_disoccs_bw = out[..., 15]
 
         # set invisible transient_sigmas to a very negative value
         if test_time and output_transient and 'dataset' in kwargs:
@@ -209,12 +203,14 @@ def render_rays(models,
         deltas = torch.cat([deltas, 100*torch.ones_like(deltas[:, :1])], -1)
 
         noise = torch.randn_like(static_sigmas) * noise_std
-        alphas = 1-torch.exp(-deltas*act(static_sigmas+noise))
+        results[f'static_sigmas_{typ}'] = static_sigmas = act(static_sigmas+noise)
+        alphas = 1-torch.exp(-deltas*static_sigmas)
 
         if output_transient:
             static_alphas = alphas
             noise = torch.randn_like(transient_sigmas) * noise_std
-            transient_alphas = 1-torch.exp(-deltas*act(transient_sigmas+noise))
+            results[f'transient_sigmas_{typ}'] = transient_sigmas = act(transient_sigmas+noise)
+            transient_alphas = 1-torch.exp(-deltas*transient_sigmas)
             alphas = 1-(1-static_alphas)*(1-transient_alphas)
 
             if (not test_time) and output_transient_flow: # render with flowed-xyzs
@@ -222,13 +218,13 @@ def render_rays(models,
                 xyz_fw_ = rearrange(xyz_fw, 'n1 n2 c -> (n1 n2) c', c=3)
                 tp1_embedded = embeddings['t'](torch.clamp(ts+1, max=max_t)) # t+1
                 tp1_embedded_ = repeat(tp1_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
-                results['rgb_fw'], transient_flows_fw_bw, results['transient_weights_fw'] = \
+                results['rgb_fw'], transient_flows_fw_bw, transient_weights_fw = \
                     render_transient_warping(xyz_fw_, tp1_embedded_, 'bw')
                 results['xyzs_bw'] = xyz_bw = xyz + transient_flows_bw
                 xyz_bw_ = rearrange(xyz_bw, 'n1 n2 c -> (n1 n2) c', c=3)
                 tm1_embedded = embeddings['t'](torch.clamp(ts-1, min=0)) # t-1
                 tm1_embedded_ = repeat(tm1_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
-                results['rgb_bw'], transient_flows_bw_fw, results['transient_weights_bw'] = \
+                results['rgb_bw'], transient_flows_bw_fw, transient_weights_bw = \
                     render_transient_warping(xyz_bw_, tm1_embedded_, 'fw')
                 # to compute fw-bw consistency
                 results['xyzs_fw_bw'] = xyz_fw + transient_flows_fw_bw
@@ -281,33 +277,21 @@ def render_rays(models,
                 reduce(_static_weights*zs, 'n1 n2 -> n1', 'sum')
 
             if output_transient_flow:
-                # if (not test_time) and kwargs['epoch']<5:
-                #     # to capture dynamic region initially in training
-                transient_alphas_sh = \
-                    torch.cat([torch.ones_like(transient_alphas[:, :1]), 1-transient_alphas], -1)
-                transient_transmittance = torch.cumprod(transient_alphas_sh[:, :-1], -1)
-                _transient_weights = transient_alphas * transient_transmittance
-                w = rearrange(_transient_weights, 'n1 n2 -> n1 n2 1')
-                # else:
-                #     # after initial stabilization stage, use all weights to compose the flow
-                #     w = weights_
-                results['xyz_fine'] = reduce(w*xyz, 'n1 n2 c-> n1 c', 'sum')
+                results['xyz_fine'] = reduce(weights_*xyz, 'n1 n2 c-> n1 c', 'sum')
                 results['transient_flow_fw'] = \
-                    reduce(w*transient_flows_fw, 'n1 n2 c -> n1 c', 'sum')
+                    reduce(weights_*transient_flows_fw, 'n1 n2 c -> n1 c', 'sum')
                 results['xyz_fw'] = results['xyz_fine']+results['transient_flow_fw']
                 results['transient_flow_bw'] = \
-                    reduce(w*transient_flows_bw, 'n1 n2 c -> n1 c', 'sum')
+                    reduce(weights_*transient_flows_bw, 'n1 n2 c -> n1 c', 'sum')
                 results['xyz_bw'] = results['xyz_fine']+results['transient_flow_bw']
 
                 if (not test_time) and 'disocc' in output_transient_flow:
-                    results['transient_disocc_fw'] = \
-                        1-torch.abs(reduce(results['transient_weights_fw']-transient_weights, 'n1 n2 -> n1 1', 'sum'))
-                    results['transient_disoccs_fw'] = \
-                        1-torch.abs(rearrange(results['transient_weights_fw']-transient_weights, 'n1 n2 -> n1 n2 1'))
-                    results['transient_disocc_bw'] = \
-                        1-torch.abs(reduce(results['transient_weights_bw']-transient_weights, 'n1 n2 -> n1 1', 'sum'))
-                    results['transient_disoccs_bw'] = \
-                        1-torch.abs(rearrange(results['transient_weights_bw']-transient_weights, 'n1 n2 -> n1 n2 1'))
+                    occ_fw = (transient_weights_fw-transient_weights).detach()
+                    occ_bw = (transient_weights_bw-transient_weights).detach()
+                    results['disocc_fw'] = 1-torch.abs(reduce(occ_fw, 'n1 n2 -> n1 1', 'sum'))
+                    results['disoccs_fw'] = 1-torch.abs(rearrange(occ_fw, 'n1 n2 -> n1 n2 1'))
+                    results['disocc_bw'] = 1-torch.abs(reduce(occ_bw, 'n1 n2 -> n1 1', 'sum'))
+                    results['disoccs_bw'] = 1-torch.abs(rearrange(occ_bw, 'n1 n2 -> n1 n2 1'))
 
         else: # no transient field
             results[f'rgb_{typ}'] = reduce(weights_*static_rgbs, 'n1 n2 c -> n1 c', 'sum')
