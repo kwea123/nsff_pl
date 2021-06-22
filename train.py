@@ -1,3 +1,4 @@
+import os
 from opt import get_opts
 import torch
 from collections import defaultdict
@@ -26,6 +27,9 @@ from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TestTubeLogger
 from pytorch_lightning.plugins import DDPPlugin
+from pytorch_lightning import seed_everything
+
+seed_everything(42, workers=True)
 
 
 class NeRFSystem(LightningModule):
@@ -142,15 +146,9 @@ class NeRFSystem(LightningModule):
     def train_dataloader(self):
         self.train_dataset.batch_size = self.hparams.batch_size
 
-        def wif(id):
-            uint64_seed = torch.initial_seed()
-            ss = np.random.SeedSequence([uint64_seed])
-            np.random.seed(ss.generate_state(4))
-
         return DataLoader(self.train_dataset,
                           shuffle=True,
                           num_workers=4,
-                          worker_init_fn=wif,
                           batch_size=None,
                           pin_memory=True)
 
@@ -261,6 +259,17 @@ def main(hparams):
     trainer.fit(system)
 
 
+def backup_files(args, files):
+    """Save files for debugging."""
+    backup_dir = os.path.join('files_backup', args.exp_name)
+    os.makedirs(backup_dir, exist_ok=True)
+    for f in files:
+        os.system(f'cp {f} {backup_dir}')
+
+
 if __name__ == '__main__':
     hparams = get_opts()
+    if hparams.debug:
+        backup_files(hparams, 
+                     ['models/nerf.py', 'models/rendering.py', 'losses.py'])
     main(hparams)

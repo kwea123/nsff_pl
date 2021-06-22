@@ -107,5 +107,7 @@ def get_opts():
                         help='experiment name')
     parser.add_argument('--refresh_every', type=int, default=1,
                         help='How often to refresh the progress bar')
+    parser.add_argument('--debug', default=False, action="store_true",
+                        help='backup files for debugging')
 
     return parser.parse_args()
