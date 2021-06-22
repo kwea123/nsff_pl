@@ -409,8 +409,8 @@ def create_wander_path(c2w, max_trans, n_poses=60):
 
     for i in range(n_poses):
         x_trans = max_trans * np.sin(2.0 * np.pi * float(i) / float(n_poses))
-        y_trans = max_trans * np.cos(2.0 * np.pi * float(i) / float(n_poses)) /3.0
-        z_trans = max_trans * np.cos(2.0 * np.pi * float(i) / float(n_poses)) /3.0
+        y_trans = max_trans * np.cos(2.0 * np.pi * float(i) / float(n_poses))/2.0
+        z_trans = max_trans * np.cos(2.0 * np.pi * float(i) / float(n_poses))
 
         i_pose = np.concatenate([
             np.concatenate(

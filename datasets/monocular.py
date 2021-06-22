@@ -266,7 +266,7 @@ class MonocularDataset(Dataset):
                     if self.split == 'test_spiral': 
                         time = int(idx/len(self.poses_test)*self.N_frames)
                     else:
-                        time = int(self.split.split('_')[-1])
+                        time = int(self.split.split('_')[1][6:])
                 elif self.split.startswith('test_fixview'):
                     time = idx
                 else: time = 0
