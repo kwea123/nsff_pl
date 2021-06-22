@@ -5,7 +5,14 @@ Neural Scene Flow Fields using pytorch-lightning. This repo reimplements the [NS
 The main modifications are the followings:
 
 1.  **Remove the blending weight in static NeRF. I adopt the addition strategy in [NeRF-W](https://github.com/kwea123/nerf_pl/tree/nerfw).**
-2.  **Remove disocclusion head. I use warped dynamic weights as an indicator of whether occlusion occurs.** At the beginning of training, this indicator acts reliably as shown below:. As training goes, the disocclusion tends to get close to 1, i.e. occlusion does not exist even in warping. In my opinion, this means the empty space learns to "move a little" to avoid the space occupied by dynamic objects.
+2.  **Remove disocclusion head. I use warped dynamic weights as an indicator of whether occlusion occurs.** At the beginning of training, this indicator acts reliably as shown below:
+<p align="center">
+  <img src="https://user-images.githubusercontent.com/11364490/122887190-9f2e9380-d37b-11eb-8bbf-f11d22707a16.png", width="80%">
+  <br>
+  <sup>Top: Reference image. Center: Warped images, artifacts appear at boundaries. Bottom: Estimated disocclusion.</sup>
+</p>
+As training goes, the disocclusion tends to get close to 1, i.e. occlusion does not exist even in warping. In my opinion, this means the empty space learns to "move a little" to avoid the space occupied by dynamic objects.
+
 3.  **Compose static dynamic also in image warping.**
 
 Implementation details are in [models/rendering.py](models/rendering.py).
@@ -46,7 +53,15 @@ The implementation is verified on several sequences, and produces visually plaus
 
 ### Novel view synthesis (spiral)
 
-[kid_sp8](https://user-images.githubusercontent.com/11364490/122886630-1879b680-d37b-11eb-8265-7a418d44d24a.gif)
+<p align="center">
+  <img src="https://user-images.githubusercontent.com/11364490/122886630-1879b680-d37b-11eb-8265-7a418d44d24a.gif", width="40%">
+</p>
+
+### Time interpolation
+
+<p align="center">
+  <img src="assets/kid_fv8.gif", width="40%">
+</p>
 
 The color of our method is more vivid and closer to the GT images both qualitatively and quantitatively (not because of gif compression). Also, the background is more stable and cleaner.
 
