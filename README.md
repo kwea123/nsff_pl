@@ -221,6 +221,8 @@ python train.py \
   --exp_name exp
 ```
   
+**Important** You need to set `--N_vocab` to more than the number of the images (default 100). E.g. set `--N_vocab 400` if you have 380 images.
+  
 </details>
 
 # :mag_right: Testing
