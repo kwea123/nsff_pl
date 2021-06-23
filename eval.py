@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 import cv2
+import copy
 from collections import defaultdict
 import imageio
 import numpy as np
@@ -92,7 +93,10 @@ def f(models, embeddings,
     """Do batched inference on rays using chunk."""
     B = rays.shape[0]
     results = defaultdict(list)
+    kwargs_ = copy.deepcopy(kwargs)
     for i in range(0, B, chunk):
+        if 'view_dir' in kwargs:
+            kwargs_['view_dir'] = kwargs['view_dir'][i:i+chunk]
         rendered_ray_chunks = \
             render_rays(models,
                         embeddings,
@@ -105,7 +109,7 @@ def f(models, embeddings,
                         N_importance,
                         chunk,
                         test_time=True,
-                        **kwargs)
+                        **kwargs_)
         for k, v in rendered_ray_chunks.items():
             results[k] += [v.cpu()]
     for k, v in results.items():
