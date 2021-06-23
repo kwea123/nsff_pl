@@ -64,7 +64,13 @@ The implementation is verified on several sequences, and produces visually plaus
   <img src="https://user-images.githubusercontent.com/11364490/122915609-e0806c80-d396-11eb-934d-65f9d107b5ce.gif", width="40%">
   <img src="https://user-images.githubusercontent.com/11364490/123046460-170dc400-d437-11eb-9ac9-29086e438062.gif", width="40%">
   <br>
-  <sup>Left: this repo. Right: pretrained model of the original repo.</sup>
+  <img src="https://user-images.githubusercontent.com/11364490/123046853-8f748500-d437-11eb-9e46-7b634bb15c69.png", width="40%">
+  <img src="https://user-images.githubusercontent.com/11364490/123046793-7ff53c00-d437-11eb-9f9a-e3c46ce207f4.png", width="40%">
+  <br>
+  <img src="https://user-images.githubusercontent.com/11364490/123046862-91d6df00-d437-11eb-8fa5-aaea58c1a643.png", width="40%">
+  <img src="https://user-images.githubusercontent.com/11364490/123046797-81beff80-d437-11eb-9e68-6cfb95310d6d.png", width="40%">
+  <br>
+  <sup>Left: this repo. Right: pretrained model of the original repo. The 2nd and 3rd rows are 0th frame and 29th frame to show the difference of the background.</sup>
 </p>
 
 The color of our method is more vivid and closer to the GT images both qualitatively and quantitatively (not because of gif compression). Also, even **without** any kind of supervision (either direction or self supervision), the network learns to separate the foreground and the background more cleanly than the original implementation, which is unexpected! Bad fg/bg separation not only means the background actually *changes* each frame, but also the color information is not leverage across time, so the reconstruction quality degrades, as can be shown in the original NSFF result towards the end.
