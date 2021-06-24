@@ -108,6 +108,9 @@ Our method also produces smoother depths, although it might not have direct impa
   <img src="https://user-images.githubusercontent.com/11364490/122926467-d7959800-d3a2-11eb-9b6a-253d1509afb2.gif", width="40%">
   <img src="https://user-images.githubusercontent.com/11364490/122926576-f7c55700-d3a2-11eb-90a6-70340ec6d0ce.gif", width="40%">
   <br>
+  <img src="https://user-images.githubusercontent.com/11364490/123185944-052d2f00-d4d2-11eb-8093-13d1cabc2f2d.gif", width="40%">
+  <img src="https://user-images.githubusercontent.com/11364490/123185950-06f6f280-d4d2-11eb-8d12-7c1f0cdbf39b.gif", width="40%">
+  <br>
   <img src="https://user-images.githubusercontent.com/11364490/123023518-773e3f00-d412-11eb-9dc7-eb91329c414b.gif", width="40%">
   <img src="https://user-images.githubusercontent.com/11364490/123023585-989f2b00-d412-11eb-94d6-685b0cedf417.gif", width="40%">
   <br>
@@ -260,7 +263,7 @@ More specifically, the `split` argument specifies which novel view to generate:
 
 1.  I add entropy loss as suggested [here](https://github.com/zhengqili/Neural-Scene-Flow-Fields/issues/18#issuecomment-851038816). This allows the person to be "thin" and produces less artifact when the camera is far from the original pose.
 2.  I explicitly zero the flow at far regions (where `z>0.95`).
-3.  I add a cross entropy loss to encourage static and dynamic weights to peak at different locations (i.e. one sample points is either static or dynamic).
+3.  I add a cross entropy loss with thickness to encourage static and dynamic weights to peak at different locations (i.e. one sample points is either static or dynamic). The thickness specifies how many intervals should the peaks be separated. Empirically I found 15 to be a good value. Explanation about this loss is, for example for the "kid playing bubble scene", the kid is rotating around himself with the rotation axis almost fixed, so if no prior is added, the network learns the central part around the body as **static** (for example you can imagine a flag rotating around its pole, only the flag moves but the pole doesn't). This doesn't cause problem for reconstruction, but when it comes to novel view, the wrongly estimated static part causes artifacts. In order to make the network learn that the whole body is moving, I add this cross entropy loss to force the static peak to be at least `thickness//2` far from the dynamic peak.
 4.  In pose reconstruction, the original authors use **the entire image** to reconstruct the poses, without masking out the dynamic region. In my opinion this strategy might lead to totally wrong pose estimation in some cases, so I opt to reconstruct the poses with dynamic region masked out. In order to set the near plane correctly, I use COLMAP combined with monodepth to get the minimum depth.
 
 # TODO
