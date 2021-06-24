@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from kornia.filters import filter2D
+from kornia.filters import filter2d
 from einops import reduce, rearrange, repeat
 from datasets import ray_utils
 
@@ -81,12 +81,12 @@ class NeRFWLoss(nn.Module):
             ret['entropy_l'] = self.lambda_ent * \
                 reduce(-inputs['transient_weights_fine']*
                        torch.log(inputs['transient_weights_fine']+1e-8), 'n1 n2 -> n1', 'sum')
-            # linearly increase the weight from 0 to lambda_ent in 10 epochs
-            cross_entropy_w = self.lambda_ent * min(kwargs['epoch']/10, 1.0)
+            # linearly increase the weight from 0 to lambda_ent in 20 epochs
+            cross_entropy_w = self.lambda_ent * min(kwargs['epoch']/20, 1.0)
             # dilate transient_weight with @thickness window
             tr_w = inputs['transient_weights_fine'].detach() # (N_rays, N_samples)
             tr_w = rearrange(tr_w, 'n1 n2 -> 1 1 n1 n2')
-            tr_w = filter2D(tr_w, self.thickness_filter, 'constant') # 0-pad
+            tr_w = filter2d(tr_w, self.thickness_filter, 'constant') # 0-pad
             tr_w = rearrange(tr_w, '1 1 n1 n2 -> n1 n2')
             ret['cross_entropy_l'] = cross_entropy_w/self.thickness * \
                 reduce(tr_w*torch.log(inputs['static_weights_fine']+1e-8),

@@ -180,7 +180,7 @@ class NeRFSystem(LightningModule):
         self.loss.lambda_geo_d = self.hparams.lambda_geo_init * 0.1**(self.current_epoch//10)
         self.loss.lambda_geo_f = self.hparams.lambda_geo_init * 0.1**(self.current_epoch//10)
 
-    def training_step(self, batch, batch_nb):
+    def training_step(self, batch, batch_nb, optimizer_idx):
         rays, rgbs, ts = batch['rays'], batch['rgbs'], batch.get('ts', None)
         # print(batch['batch_idxs'])
         # if self.train_dataset.prioritized_replay:
@@ -203,7 +203,7 @@ class NeRFSystem(LightningModule):
             psnr_ = psnr(results['rgb_fine'], rgbs)
 
         self.log('lr/static', get_learning_rate(self.static_optimizer))
-        self.log('lr/dynamic', get_learning_rate(self.dynamic_optimizer))
+        self.log('lr/dynamic', get_learning_rate(self.transient_optimizer))
         self.log('train/loss', loss)
         for k, v in loss_d.items(): self.log(f'train/{k}', v, prog_bar=True)
         self.log('train/psnr', psnr_, prog_bar=True)
