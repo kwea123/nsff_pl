@@ -12,10 +12,8 @@ from models.rendering import render_rays
 
 # optimizer, scheduler, visualization
 from utils import *
-from kornia import create_meshgrid
-import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-from datasets import flowlib
+from torch.optim import Adam
+from torch.optim.lr_scheduler import CosineAnnealingLR, MultiStepLR
 from torchvision.utils import make_grid
 
 # losses
@@ -47,8 +45,7 @@ class NeRFSystem(LightningModule):
         # models
         self.embedding_xyz = PosEmbedding(hparams.S_emb_xyz, hparams.N_emb_xyz)
         self.embedding_dir = PosEmbedding(hparams.S_emb_dir, hparams.N_emb_dir)
-        self.embeddings = {'xyz': self.embedding_xyz,
-                           'dir': self.embedding_dir}
+        self.embeddings = {'xyz': self.embedding_xyz, 'dir': self.embedding_dir}
 
         if hparams.encode_a:
             self.embedding_a = torch.nn.Embedding(hparams.N_vocab, hparams.N_a)
@@ -140,12 +137,28 @@ class NeRFSystem(LightningModule):
             self.loss.max_t = self.train_dataset.N_frames-1
 
     def configure_optimizers(self):
-        kwargs = {}
-        self.optimizer = get_optimizer(self.hparams, self.models_to_train, **kwargs)
-        if self.hparams.lr_scheduler == 'const': return self.optimizer
+        # self.optimizer = get_optimizer(self.hparams, self.models_to_train)
+        named_parameters = get_named_parameters(self.models_to_train)
+        static_parameters, transient_parameters = [], []
+        for n, p in named_parameters:
+            if n.startswith('static'):
+                static_parameters += [{'params': p, 'lr': hparams.st_lr}]
+            else:
+                transient_parameters += [{'params': p, 'lr': hparams.dy_lr}]
+        # one optimizer for static
+        self.static_optimizer = Adam(static_parameters,
+                                     weight_decay=hparams.weight_decay)
+        # one optimizer for dynamic + embedding
+        self.transient_optimizer = Adam(static_parameters,
+                                        weight_decay=hparams.weight_decay)
 
-        scheduler = get_scheduler(self.hparams, self.optimizer)
-        return [self.optimizer], [scheduler]
+        static_scheduler = MultiStepLR(self.static_optimizer, milestones=hparams.decay_step,
+                                       gamma=hparams.decay_gamma)
+        transient_scheduler = \
+            CosineAnnealingLR(self.transient_optimizer, T_max=hparams.num_epochs, eta_min=1e-8)
+
+        return [self.static_optimizer, self.transient_optimizer], \
+               [static_scheduler, transient_scheduler]
 
     def train_dataloader(self):
         self.train_dataset.batch_size = self.hparams.batch_size
@@ -189,7 +202,8 @@ class NeRFSystem(LightningModule):
         with torch.no_grad():
             psnr_ = psnr(results['rgb_fine'], rgbs)
 
-        self.log('lr', get_learning_rate(self.optimizer))
+        self.log('lr/static', get_learning_rate(self.static_optimizer))
+        self.log('lr/dynamic', get_learning_rate(self.dynamic_optimizer))
         self.log('train/loss', loss)
         for k, v in loss_d.items(): self.log(f'train/{k}', v, prog_bar=True)
         self.log('train/psnr', psnr_, prog_bar=True)
