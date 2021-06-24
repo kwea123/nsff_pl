@@ -22,6 +22,10 @@ from datasets.ray_utils import *
 torch.backends.cudnn.benchmark = True
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+
 def get_opts():
     parser = ArgumentParser()
     parser.add_argument('--root_dir', type=str, required=True,
