@@ -1,5 +1,7 @@
 import torch
 from torch import nn
+from kornia.filters import filter2D
+from einops import reduce, rearrange, repeat
 from datasets import ray_utils
 
 
@@ -30,9 +32,9 @@ class NeRFWLoss(nn.Module):
     """
     col_l: coarse and fine color loss
     disp_l: monodepth loss
-    tr_far_l: minimize transient sigma at far regions
     entropy_l: entropy loss to encourage weights to be concentrated
     cross_entropy_l: encourage static to have different peaks than dynamic
+                     @thickness specifies how many intervals to separate the peaks
 
 
     ------ flow losses cf. https://arxiv.org/pdf/2011.13084.pdf -------------------
@@ -51,12 +53,15 @@ class NeRFWLoss(nn.Module):
     """
     def __init__(self,
                  lambda_geo=0.04, lambda_reg=0.1,
+                 thickness=15,
                  topk=1.0):
         super().__init__()
         self.lambda_geo_d = self.lambda_geo_f = lambda_geo
         self.lambda_reg = lambda_reg
         self.lambda_ent = 1e-3
         self.z_far = 0.95
+        self.thickness = thickness
+        self.thickness_filter = torch.ones(1, 1, thickness)
 
         self.topk = topk
 
@@ -77,9 +82,13 @@ class NeRFWLoss(nn.Module):
                           torch.log(inputs['transient_weights_fine']+1e-8), -1)
             # linearly increase the weight from 0 to lambda_ent in 20 epochs
             cross_entropy_w = self.lambda_ent * min(kwargs['epoch']/20, 1.0)
-            ret['cross_entropy_l'] = cross_entropy_w * \
-                torch.sum(inputs['transient_weights_fine'].detach()*
-                          torch.log(inputs['static_weights_fine']+1e-8), -1)
+            # dilate transient_weight with @thickness window
+            tr_w = inputs['transient_weights_fine'].detach() # (N_rays, N_samples)
+            tr_w = rearrange(tr_w, 'n1 n2 -> 1 1 n1 n2')
+            tr_w = filter2D(tr_w, self.thickness_filter, 'constant') # 0-pad
+            tr_w = rearrange(tr_w, '1 1 n1 n2 -> n1 n2')
+            ret['cross_entropy_l'] = cross_entropy_w/self.thickness * \
+                reduce(tr_w*torch.log(inputs['static_weights_fine']+1e-8), 'n1 n2 -> n1', 'sum')
 
             Ks = self.Ks[targets['cam_ids']] # (N_rays, 3, 3)
             xyz_fw_w = ray_utils.ndc2world(inputs['xyz_fw'], Ks) # (N_rays, 3)
@@ -106,7 +115,7 @@ class NeRFWLoss(nn.Module):
                 ret['flow_bw_l'] = self.lambda_geo_f/2 * \
                     torch.abs(uv_bw[valid_geo_bw]-targets['uv_bw'][valid_geo_bw])
 
-            pho_w = cyc_w = 0.5 * min(kwargs['epoch']/20, 1.0)
+            pho_w = cyc_w = 1.0#0.5 * min(kwargs['epoch']/20, 1.0)
             ret['pho_l'] = pho_w * \
                 inputs['disocc_fw']*(inputs['rgb_fw']-targets['rgbs'])**2 / \
                 inputs['disocc_fw'].mean()

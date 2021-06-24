@@ -49,6 +49,8 @@ def get_opts():
                         help='number of embeddings for transient objects')
     parser.add_argument('--lambda_geo_init', type=float, default=0.04,
                         help='2d-3d flow consistency loss coefficient')
+    parser.add_argument('--thickness', type=int, default=15,
+                        help='prior about dynamic object thickness (how many intervals objects occupy)')
     parser.add_argument('--flow_scale', type=float, default=0.2,
                         help='flow scale to multiply to flow network output')
 
