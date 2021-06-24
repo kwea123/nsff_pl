@@ -185,8 +185,7 @@ class NeRFSystem(LightningModule):
         with torch.no_grad():
             psnr_ = psnr(results['rgb_fine'], rgbs)
 
-        for i, lr in enumerate(get_learning_rate(self.optimizer)):
-            self.log(f'lr/param_group{i}', lr)
+        self.log('lr', get_learning_rate(self.optimizer))
         self.log('train/loss', loss)
         for k, v in loss_d.items(): self.log(f'train/{k}', v, prog_bar=True)
         self.log('train/psnr', psnr_, prog_bar=True)
