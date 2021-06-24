@@ -13,6 +13,8 @@ from models.rendering import render_rays
 # optimizer, scheduler, visualization
 from utils import *
 from kornia import create_meshgrid
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 from datasets import flowlib
 from torchvision.utils import make_grid
 
@@ -30,9 +32,6 @@ from pytorch_lightning.plugins import DDPPlugin
 from pytorch_lightning import seed_everything
 
 seed_everything(42, workers=True)
-
-import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 class NeRFSystem(LightningModule):

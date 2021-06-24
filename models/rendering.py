@@ -202,17 +202,14 @@ def render_rays(models,
         deltas = zs[:, 1:] - zs[:, :-1] # (N_rays, N_samples_-1)
         deltas = torch.cat([deltas, 100*torch.ones_like(deltas[:, :1])], -1)
 
-        static_sigmas = act(static_sigmas+torch.randn_like(static_sigmas)*noise_std)
-        # if (not test_time) and 'epoch' in kwargs:
-        #     static_sigmas = static_sigmas * kwargs['epoch']/20.0
-        results[f'static_sigmas_{typ}'] = static_sigmas
+        results[f'static_sigmas_{typ}'] = static_sigmas = \
+            act(static_sigmas+torch.randn_like(static_sigmas)*noise_std)
         alphas = 1-torch.exp(-deltas*static_sigmas)
 
         if output_transient:
             static_alphas = alphas
-            noise = torch.randn_like(transient_sigmas) * noise_std
-            results[f'transient_sigmas_{typ}'] = \
-                transient_sigmas = act(transient_sigmas+noise)
+            results[f'transient_sigmas_{typ}'] = transient_sigmas = \
+                act(transient_sigmas+torch.randn_like(transient_sigmas)*noise_std)
             transient_alphas = 1-torch.exp(-deltas*transient_sigmas)
             alphas = 1-(1-static_alphas)*(1-transient_alphas)
 
