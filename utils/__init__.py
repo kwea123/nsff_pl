@@ -76,8 +76,7 @@ def get_scheduler(hparams, optimizer):
     return scheduler
 
 def get_learning_rate(optimizer):
-    for param_group in optimizer.param_groups:
-        return param_group['lr']
+    return [param_group['lr'] for param_group in optimizer.param_groups]
 
 def extract_model_state_dict(ckpt_path, model_name='model', prefixes_to_ignore=[]):
     checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
