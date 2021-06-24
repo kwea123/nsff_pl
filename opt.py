@@ -75,20 +75,33 @@ def get_opts():
     parser.add_argument('--weight_path', type=str, default=None,
                         help='pretrained weight to load (do not load optimizers, etc)')
 
-    parser.add_argument('--st_lr', type=float, default=5e-5,
-                        help='static network learning rate')
-    parser.add_argument('--dy_lr', type=float, default=5e-4,
-                        help='dynamic network and embedding learning rate')
+    parser.add_argument('--optimizer', type=str, default='adam',
+                        help='optimizer type',
+                        choices=['sgd', 'adam', 'radam', 'ranger'])
+    parser.add_argument('--lr', type=float, default=5e-4,
+                        help='learning rate')
     parser.add_argument('--momentum', type=float, default=0.9,
                         help='learning rate momentum')
     parser.add_argument('--weight_decay', type=float, default=0,
                         help='weight decay')
+    parser.add_argument('--lr_scheduler', type=str, default='steplr',
+                        help='scheduler type',
+                        choices=['const', 'steplr', 'cosine', 'poly'])
+    #### params for warmup, only applied when optimizer == 'sgd' or 'adam'
+    parser.add_argument('--warmup_multiplier', type=float, default=1.0,
+                        help='lr is multiplied by this factor after --warmup_epochs')
+    parser.add_argument('--warmup_epochs', type=int, default=0,
+                        help='Gradually warm-up(increasing) learning rate in optimizer')
     ###########################
-    #### params for static steplr ####
-    parser.add_argument('--decay_step', nargs='+', type=int, default=[10, 20, 30, 40],
+    #### params for steplr ####
+    parser.add_argument('--decay_step', nargs='+', type=int, default=[20],
                         help='scheduler decay step')
-    parser.add_argument('--decay_gamma', type=float, default=2,
+    parser.add_argument('--decay_gamma', type=float, default=0.1,
                         help='learning rate decay amount')
+    ###########################
+    #### params for poly ######
+    parser.add_argument('--poly_exp', type=float, default=0.9,
+                        help='exponent for polynomial learning rate decay')
     ###########################
 
     # pytorch lightning parameters
