@@ -31,6 +31,9 @@ from pytorch_lightning import seed_everything
 
 seed_everything(42, workers=True)
 
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 
 class NeRFSystem(LightningModule):
     def __init__(self, hparams):
@@ -38,7 +41,9 @@ class NeRFSystem(LightningModule):
         self.save_hyperparameters(hparams)
 
         # losses and metrics
-        self.loss = loss_dict['nerfw'](lambda_geo=self.hparams.lambda_geo_init)
+        self.loss = \
+            loss_dict['nerfw'](lambda_geo=self.hparams.lambda_geo_init,
+                               thickness=self.hparams.thickness)
 
         # models
         self.embedding_xyz = PosEmbedding(hparams.S_emb_xyz, hparams.N_emb_xyz)
@@ -271,5 +276,5 @@ if __name__ == '__main__':
     hparams = get_opts()
     if hparams.debug:
         backup_files(hparams, 
-                     ['models/nerf.py', 'models/rendering.py', 'losses.py'])
+                     ['models/nerf.py', 'models/rendering.py', 'losses.py', 'train.py'])
     main(hparams)
