@@ -75,8 +75,8 @@ class NeRFWLoss(nn.Module):
         ret['col_l'] = reduce((inputs['rgb_fine']-targets['rgbs'])**2,
                               'n1 c -> n1', 'mean')
         if 'rgb_coarse' in inputs:
-            ret['col_l'] += reduce((inputs['rgb_coarse']-targets['rgbs'])**2,
-                                   'n1 c -> n1', 'mean')
+            ret['col_l'] += 0.1 * reduce((inputs['rgb_coarse']-targets['rgbs'])**2,
+                                         'n1 c -> n1', 'mean')
         ret['disp_l'] = self.lambda_geo_d * \
             shiftscale_invariant_depthloss(inputs['depth_fine'], targets['disps'])
         if 'depth_coarse' in inputs:
@@ -162,10 +162,12 @@ class NeRFWLoss(nn.Module):
             ret['reg_sp_sm_l'] = reduce(ret['reg_sp_sm_l'], 'n1 n2 c -> n1', 'mean')
 
         for k, loss in ret.items():
-        # if 'weights' in kwargs... use prioritized weights of each ray
-            if self.topk < 1:
+            if 'weights' in kwargs: # use prioritized weights of each ray
+                loss = loss * kwargs['weights']
+            if self.topk < 1: # use hard example mining
                 num_hard_samples = int(self.topk * loss.numel())
                 loss, _ = torch.topk(loss.flatten(), num_hard_samples)
+
             ret[k] = loss.mean()
 
         return ret
