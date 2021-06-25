@@ -38,7 +38,8 @@ class NeRFSystem(LightningModule):
         # losses and metrics
         self.loss = \
             loss_dict['nerfw'](lambda_geo=self.hparams.lambda_geo_init,
-                               thickness=self.hparams.thickness)
+                               thickness=self.hparams.thickness,
+                               topk=self.hparams.topk)
 
         # models
         self.embedding_xyz = PosEmbedding(hparams.S_emb_xyz, hparams.N_emb_xyz)
@@ -164,19 +165,15 @@ class NeRFSystem(LightningModule):
 
     def training_step(self, batch, batch_nb):
         rays, rgbs, ts = batch['rays'], batch['rgbs'], batch.get('ts', None)
-        # print(batch['batch_idxs'])
-        # if self.train_dataset.prioritized_replay:
-        #     for i in range(len(rays)): # add experience
-        #         self.train_dataset.replay_buffers[ts[0].item()].add(rays[i].cpu())
         kwargs = {'epoch': self.current_epoch,
                   'output_transient': self.output_transient,
                   'output_transient_flow': self.output_transient_flow}
         results = self(rays, ts, **kwargs)
         # if self.train_dataset.prioritized_replay:
-        #     new_priorities = ((results['rgb_fine']-targets['rgbs'])**2).sum(-1)+1e-6
+        #     new_priorities = ((results['rgb_fine']-rgbs)**2).mean(-1)+1e-8
         #     self.train_dataset.replay_buffers[ts[0].item()] \
-        #         .update_priorities(batch['batch_idxs'], new_priorities.cpu().numpy())
-        #   kwargs['weights] = batch['weights]...
+        #         .update_priorities(batch['batch_idxs'], new_priorities.detach().cpu().numpy())
+        #     kwargs['weights'] = batch['weights']
 
         loss_d = self.loss(results, batch, **kwargs)
         loss = sum(l for l in loss_d.values())
@@ -224,7 +221,7 @@ class NeRFSystem(LightningModule):
     def validation_epoch_end(self, outputs):
         mean_psnr = torch.stack([x['val_psnr'] for x in outputs]).mean()
         self.log('val/psnr', mean_psnr, prog_bar=True)
-        if self.output_transient:
+        if self.output_transient and all(['val_psnr_mask' in x for x in outputs]):
             mean_psnr_mask = torch.stack([x['val_psnr_mask'] for x in outputs]).mean()
             self.log('val/psnr_mask', mean_psnr_mask, prog_bar=True)
 
