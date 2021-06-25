@@ -55,12 +55,8 @@ class MonocularDataset(Dataset):
             ['dummy'] + sorted(glob.glob(os.path.join(self.root_dir, 'flow_bw/*.flo')))[self.start_frame:self.end_frame]
         self.N_frames = len(self.image_paths)
 
-        try:
-            camdata = colmap_utils.read_cameras_binary(os.path.join(self.root_dir,
+        camdata = colmap_utils.read_cameras_binary(os.path.join(self.root_dir,
                                                                 'sparse/0/cameras.bin'))
-        except: # nvidia data
-            camdata = colmap_utils.read_cameras_binary(os.path.join(self.root_dir,
-                                                                'sparse/cameras.bin'))
         H = camdata[1].height
         W = camdata[1].width
         f, cx, cy, _ = camdata[1].params
@@ -72,12 +68,8 @@ class MonocularDataset(Dataset):
         self.K[1] *= self.img_wh[1]/H
 
         # read extrinsics
-        try:
-            imdata = colmap_utils.read_images_binary(os.path.join(self.root_dir,
+        imdata = colmap_utils.read_images_binary(os.path.join(self.root_dir,
                                                               'sparse/0/images.bin'))
-        except: # nvidia data
-            imdata = colmap_utils.read_images_binary(os.path.join(self.root_dir,
-                                                              'sparse/images.bin'))
         perm = np.argsort([imdata[k].name for k in imdata])
         w2c_mats = []
         bottom = np.array([0, 0, 0, 1.]).reshape(1, 4)
@@ -91,12 +83,8 @@ class MonocularDataset(Dataset):
         poses = np.linalg.inv(w2c_mats)[:, :3] # (N_frames, 3, 4)
 
         # read bounds
-        try:
-            pts3d = colmap_utils.read_points3d_binary(os.path.join(self.root_dir,
+        pts3d = colmap_utils.read_points3d_binary(os.path.join(self.root_dir,
                                                                'sparse/0/points3D.bin'))
-        except:
-            pts3d = colmap_utils.read_points3d_binary(os.path.join(self.root_dir,
-                                                               'sparse/points3D.bin'))
         pts_w = np.zeros((1, 3, len(pts3d))) # (1, 3, N_points)
         visibilities = np.zeros((len(poses), len(pts3d))) # (N_frames, N_points)
         for i, k in enumerate(pts3d):
@@ -119,7 +107,7 @@ class MonocularDataset(Dataset):
             pts_c_v = (w2c_mats[i] @ pts_w_v)[:3] # (3, N_points_v)
             pts_uvd_v = self.K @ pts_c_v
             pts_uv_v = (pts_uvd_v[:2]/pts_uvd_v[2:]).T # (N_points_v, 2)
-            pts_uv_v = pts_uv_v.astype(np.int) # to integer pixel coordinates
+            pts_uv_v = pts_uv_v.astype(int) # to integer pixel coordinates
             pts_uv_v[:, 0] = np.clip(pts_uv_v[:, 0], 0, self.img_wh[0]-1)
             pts_uv_v[:, 1] = np.clip(pts_uv_v[:, 1], 0, self.img_wh[1]-1)
             pts_d_v = pts_uvd_v[2]
