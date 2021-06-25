@@ -74,16 +74,15 @@ class NeRFSystem(LightningModule):
                   'nerf_fine', hparams.prefixes_to_ignore)
 
         if hparams.N_importance > 0: # coarse to fine
-            raise ValueError("coarse to fine is not ready now! please set N_importance to 0!")
-            # self.nerf_coarse = NeRF(typ='coarse',
-            #                         in_channels_xyz=6*hparams.N_emb_xyz+3,
-            #                         use_viewdir=hparams.use_viewdir,
-            #                         in_channels_dir=6*hparams.N_emb_dir+3,
-            #                         encode_transient=hparams.encode_t,
-            #                         in_channels_t=hparams.N_tau)
-            # self.models['coarse'] = self.nerf_coarse
-            # load_ckpt(self.nerf_coarse, hparams.weight_path,
-            #         'nerf_coarse', hparams.prefixes_to_ignore)
+            self.nerf_coarse = NeRF(typ='coarse',
+                                    in_channels_xyz=6*hparams.N_emb_xyz+3,
+                                    use_viewdir=hparams.use_viewdir,
+                                    in_channels_dir=6*hparams.N_emb_dir+3,
+                                    encode_transient=hparams.encode_t,
+                                    in_channels_t=hparams.N_tau)
+            self.models['coarse'] = self.nerf_coarse
+            load_ckpt(self.nerf_coarse, hparams.weight_path,
+                    'nerf_coarse', hparams.prefixes_to_ignore)
 
         self.models_to_train = [self.models]
         if hparams.encode_a: self.models_to_train += [self.embedding_a]

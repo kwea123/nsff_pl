@@ -74,8 +74,14 @@ class NeRFWLoss(nn.Module):
         ret = {}
         ret['col_l'] = reduce((inputs['rgb_fine']-targets['rgbs'])**2,
                               'n1 c -> n1', 'mean')
+        if 'rgb_coarse' in inputs:
+            ret['col_l'] += reduce((inputs['rgb_coarse']-targets['rgbs'])**2,
+                                   'n1 c -> n1', 'mean')
         ret['disp_l'] = self.lambda_geo_d * \
             shiftscale_invariant_depthloss(inputs['depth_fine'], targets['disps'])
+        if 'depth_coarse' in inputs:
+            ret['disp_l'] += self.lambda_geo_d * \
+                shiftscale_invariant_depthloss(inputs['depth_coarse'], targets['disps'])
 
         if kwargs['output_transient_flow']:
             ret['entropy_l'] = self.lambda_ent * \
@@ -119,7 +125,7 @@ class NeRFWLoss(nn.Module):
                     torch.abs(uv_bw[valid_geo_bw]-targets['uv_bw'][valid_geo_bw])
                 ret['flow_bw_l'] = reduce(ret['flow_bw_l'], 'n1 c -> n1', 'mean')
 
-            pho_w = cyc_w = 0.5 * min(kwargs['epoch']/10, 1.0)
+            pho_w = cyc_w = 1.0#min(kwargs['epoch']/2, 1.0)
             ret['pho_l'] = pho_w * \
                 inputs['disocc_fw']*(inputs['rgb_fw']-targets['rgbs'])**2 / \
                 inputs['disocc_fw'].mean()

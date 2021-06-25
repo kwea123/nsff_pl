@@ -160,7 +160,7 @@ def render_rays(models,
             out = rearrange(out, '(n1 n2) c -> n1 n2 c', n1=N_rays, n2=N_samples_)
             static_sigmas = out[..., 0]
             if output_transient: transient_sigmas = out[..., 1]
-        else: # infer rgb and sigma and others
+        else:
             dir_embedded_ = repeat(dir_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
             if model.encode_appearance:
                 a_embedded_ = repeat(a_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
