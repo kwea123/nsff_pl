@@ -119,7 +119,7 @@ class NeRFWLoss(nn.Module):
                     torch.abs(uv_bw[valid_geo_bw]-targets['uv_bw'][valid_geo_bw])
                 ret['flow_bw_l'] = reduce(ret['flow_bw_l'], 'n1 c -> n1', 'mean')
 
-            pho_w = cyc_w = 0.5 * min(kwargs['epoch']/10, 1.0)
+            pho_w = cyc_w = 1.0#0.5 * min(kwargs['epoch']/10, 1.0)
             ret['pho_l'] = pho_w * \
                 inputs['disocc_fw']*(inputs['rgb_fw']-targets['rgbs'])**2 / \
                 inputs['disocc_fw'].mean()
