@@ -11,7 +11,6 @@ jupyter
 imageio==2.9.0
 imageio-ffmpeg==0.4.4
 torch_optimizer==0.1.0
-lpips
 
 # for DPT
 timm==0.4.9
