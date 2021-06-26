@@ -4,3 +4,6 @@
 [submodule "third_party/depth"]
 	path = third_party/depth
 	url = https://github.com/kwea123/DPT.git
+[submodule "third_party/lpips"]
+	path = third_party/lpips
+	url = https://github.com/kwea123/PerceptualSimilarity.git

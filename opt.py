@@ -80,6 +80,8 @@ def get_opts():
                         choices=['sgd', 'adam', 'radam', 'ranger'])
     parser.add_argument('--lr', type=float, default=5e-4,
                         help='learning rate')
+    parser.add_argument('--topk', type=float, default=1.0,
+                        help='propagate loss only for the topk hard examples')
     parser.add_argument('--momentum', type=float, default=0.9,
                         help='learning rate momentum')
     parser.add_argument('--weight_decay', type=float, default=0,
