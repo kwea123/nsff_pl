@@ -222,27 +222,37 @@ class NeRFSystem(LightningModule):
             rmse_map_b = blend_images(img, visualize_depth(-rmse_map), 0.5)
             self.logger.experiment.add_image('error_map/rmse', rmse_map_b, self.global_step)
 
+            ssim_map = ssim(img_gt.permute(1, 2, 0), img.permute(1, 2, 0), reduction='none')
+            ssim_map_b = blend_images(img, visualize_depth(-ssim_map), 0.5)
+            self.logger.experiment.add_image('error_map/ssim', ssim_map_b, self.global_step)
+
             lpips_map = lpips(self.lpips_m, img_gt.permute(1, 2, 0), img.permute(1, 2, 0), reduction='none')
             lpips_map_b = blend_images(img, visualize_depth(-lpips_map), 0.5)
             self.logger.experiment.add_image('error_map/lpips', lpips_map_b, self.global_step)
 
         log = {'val_psnr': psnr(results['rgb_fine'], rgbs),
+               'val_ssim': ssim_map.mean(),
                'val_lpips': lpips_map.mean()}
         if self.output_transient and (mask==0).any():
             log['val_psnr_mask'] = psnr(results['rgb_fine'], rgbs, mask==0)
+            log['val_ssim_mask'] = ssim_map[mask.view(H, W)==0].mean()
             log['val_lpips_mask'] = lpips_map[mask.view(H, W)==0].mean()
 
         return log
 
     def validation_epoch_end(self, outputs):
         mean_psnr = torch.stack([x['val_psnr'] for x in outputs]).mean()
+        mean_ssim = torch.stack([x['val_ssim'] for x in outputs]).mean()
         mean_lpips = torch.stack([x['val_lpips'] for x in outputs]).mean()
         self.log('val/psnr', mean_psnr, prog_bar=True)
+        self.log('val/ssim', mean_ssim)
         self.log('val/lpips', mean_lpips)
         if self.output_transient and all(['val_psnr_mask' in x for x in outputs]):
             mean_psnr_mask = torch.stack([x['val_psnr_mask'] for x in outputs]).mean()
+            mean_ssim_mask = torch.stack([x['val_ssim_mask'] for x in outputs]).mean()
             mean_lpips_mask = torch.stack([x['val_lpips_mask'] for x in outputs]).mean()
             self.log('val/psnr_mask', mean_psnr_mask, prog_bar=True)
+            self.log('val/ssim_mask', mean_ssim_mask)
             self.log('val/lpips_mask', mean_lpips_mask)
 
 
