@@ -33,17 +33,17 @@ def ssim(image_gt, image_pred, valid_mask=None, window_size=11, reduction='mean'
 
 
 @torch.no_grad()
-def lpips(lpips_model, image_gt, image_pred, valid_mask=None):
+def lpips(lpips_model, image_gt, image_pred, valid_mask=None, reduction='mean'):
     """
     lpips_model: alexnet.
     image_pred and image_gt: (H, W, 3) in [0, 1]
     valid_mask: (H, W)
     """
-    if valid_mask is None:
-        return lpips_model(image_gt.permute(2, 0, 1).unsqueeze(0),
-                           image_pred.permute(2, 0, 1).unsqueeze(0),
-                           normalize=True).item()
-    return lpips_model(image_gt.permute(2, 0, 1).unsqueeze(0),
-                       image_pred.permute(2, 0, 1).unsqueeze(0), 
-                       valid_mask.unsqueeze(-1).permute(2, 0, 1).unsqueeze(0),
-                       normalize=True).item()
+    value = lpips_model(image_gt.permute(2, 0, 1).unsqueeze(0),
+                        image_pred.permute(2, 0, 1).unsqueeze(0),
+                        normalize=True).squeeze()
+    if valid_mask is not None:
+        value = value[valid_mask]
+    if reduction == 'mean':
+        value = value.mean()
+    return value

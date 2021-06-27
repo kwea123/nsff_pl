@@ -18,7 +18,8 @@ from torchvision.utils import make_grid
 from losses import loss_dict
 
 # metrics
-from metrics import psnr
+from metrics import *
+import third_party.lpips.lpips.lpips as lpips_model
 
 # pytorch-lightning
 from pytorch_lightning import LightningModule, Trainer
@@ -159,6 +160,11 @@ class NeRFSystem(LightningModule):
                           batch_size=None,
                           pin_memory=True)
 
+    def on_epoch_start(self):
+        # for evaluation
+        if not hasattr(self, 'lpips_m'):
+            self.lpips_m = lpips_model.LPIPS(net='alex', spatial=True)
+
     def on_train_epoch_start(self):
         self.loss.lambda_geo_d = self.hparams.lambda_geo_init * 0.1**(self.current_epoch//10)
         self.loss.lambda_geo_f = self.hparams.lambda_geo_init * 0.1**(self.current_epoch//10)
@@ -210,20 +216,34 @@ class NeRFSystem(LightningModule):
             if 'mask' in batch: img_list += [visualize_mask(1-mask.view(H, W))]
             if 'disp' in batch: img_list += [visualize_depth(-disp.view(H, W))]
             img_grid = make_grid(img_list, nrow=3) # 3 images per row
-            self.logger.experiment.add_image('val/grid', img_grid, self.global_step)
+            self.logger.experiment.add_image('reconstruction/decomposition', img_grid, self.global_step)
 
-        log = {'val_psnr': psnr(results['rgb_fine'], rgbs)}
+            rmse_map = ((img_gt-img)**2).mean(0)**0.5
+            rmse_map_b = blend_images(img, visualize_depth(-rmse_map), 0.5)
+            self.logger.experiment.add_image('error_map/rmse', rmse_map_b, self.global_step)
+
+            lpips_map = lpips(self.lpips_m, img_gt.permute(1, 2, 0), img.permute(1, 2, 0), reduction='none')
+            lpips_map_b = blend_images(img, visualize_depth(-lpips_map), 0.5)
+            self.logger.experiment.add_image('error_map/lpips', lpips_map_b, self.global_step)
+
+        log = {'val_psnr': psnr(results['rgb_fine'], rgbs),
+               'val_lpips': lpips_map.mean()}
         if self.output_transient and (mask==0).any():
             log['val_psnr_mask'] = psnr(results['rgb_fine'], rgbs, mask==0)
+            log['val_lpips_mask'] = lpips_map[mask.view(H, W)==0].mean()
 
         return log
 
     def validation_epoch_end(self, outputs):
         mean_psnr = torch.stack([x['val_psnr'] for x in outputs]).mean()
+        mean_lpips = torch.stack([x['val_lpips'] for x in outputs]).mean()
         self.log('val/psnr', mean_psnr, prog_bar=True)
+        self.log('val/lpips', mean_lpips)
         if self.output_transient and all(['val_psnr_mask' in x for x in outputs]):
             mean_psnr_mask = torch.stack([x['val_psnr_mask'] for x in outputs]).mean()
+            mean_lpips_mask = torch.stack([x['val_lpips_mask'] for x in outputs]).mean()
             self.log('val/psnr_mask', mean_psnr_mask, prog_bar=True)
+            self.log('val/lpips_mask', mean_lpips_mask)
 
 
 def main(hparams):

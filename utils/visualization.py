@@ -27,3 +27,18 @@ def visualize_mask(mask, cmap=cv2.COLORMAP_BONE):
     x_ = Image.fromarray(cv2.applyColorMap(x, cmap))
     x_ = T.ToTensor()(x_) # (3, H, W)
     return x_
+
+
+def blend_images(img1, img2, alpha):
+    """
+    alpha blend two images: img1 * alpha + img2 * (1-alpha)
+    img1 and img2: (3, H, W)
+    """
+    img1 = img1.permute(1, 2, 0).cpu().numpy()
+    img1 = (255*img1).astype(np.uint8)
+    img2 = img2.permute(1, 2, 0).cpu().numpy()
+    img2 = (255*img2).astype(np.uint8)
+    blend = cv2.addWeighted(img1, alpha, img2, 1-alpha, 2.2)
+    x_ = Image.fromarray(blend)
+    x_ = T.ToTensor()(x_) # (3, H, W)
+    return x_
