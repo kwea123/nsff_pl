@@ -5,7 +5,6 @@ from collections import defaultdict
 import imageio
 import numpy as np
 import os
-from PIL import Image
 import torch
 from tqdm import tqdm
 
@@ -14,16 +13,12 @@ from models.nerf import PosEmbedding, NeRF
 
 from utils import load_ckpt, visualize_depth
 import metrics
+import third_party.lpips.lpips.lpips as lpips
 
 from datasets import dataset_dict
-from datasets.depth_utils import *
-from datasets.ray_utils import *
 
 torch.backends.cudnn.benchmark = True
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 def get_opts():
@@ -82,9 +77,6 @@ def get_opts():
                         help='whether to save depth prediction')
     parser.add_argument('--depth_format', type=str, default='png',
                         help='which format to save')
-
-    parser.add_argument('--save_error', default=False, action="store_true",
-                        help='whether to save error map')
 
     return parser.parse_args()
 
@@ -173,30 +165,35 @@ if __name__ == "__main__":
     load_ckpt(nerf_fine, args.ckpt_path, model_name='nerf_fine')
     models = {'fine': nerf_fine}
     if args.N_importance > 0:
-        raise ValueError("coarse to fine is not ready now! please set N_importance to 0!")
-    #     nerf_coarse = NeRF(typ='coarse',
-    #                        use_viewdir=args.use_viewdir,
-    #                        encode_transient=args.encode_t,
-    #                        in_channels_t=args.N_tau).to(device)
-    #     load_ckpt(nerf_coarse, args.ckpt_path, model_name='nerf_coarse')
-    #     models['coarse'] = nerf_coarse
+        nerf_coarse = NeRF(typ='coarse',
+                           use_viewdir=args.use_viewdir,
+                           encode_transient=args.encode_t,
+                           in_channels_t=args.N_tau).to(device)
+        load_ckpt(nerf_coarse, args.ckpt_path, model_name='nerf_coarse')
+        models['coarse'] = nerf_coarse
 
-    imgs, depths, psnrs = [], [], []
+    imgs, depths = [], []
+    if args.split == 'test':
+        psnrs = np.zeros((dataset.N_frames, 2))
+        ssims = np.zeros((dataset.N_frames, 2))
+        lpipss = np.zeros((dataset.N_frames, 2))
+
+    lpips_model = lpips.LPIPS(net='alex', spatial=True)
 
     last_results = None
     for i in tqdm(range(len(dataset))):
         if args.split.startswith('test_fixview') and i==len(dataset)-1: # last frame
-            img_pred = last_results['rgb_fine'].view(h, w, 3).numpy()
-            img_pred = (255*np.clip(img_pred, 0, 1)).astype(np.uint8)
-            imgs += [img_pred]
-            imageio.imwrite(os.path.join(dir_name, f'{i:03d}_{int(0):03d}.png'), img_pred)
+            img_pred = torch.clip(last_results['rgb_fine'].view(h, w, 3), 0, 1)
+            img_pred_ = (255*img_pred.numpy()).astype(np.uint8)
+            imgs += [img_pred_]
+            imageio.imwrite(os.path.join(dir_name, f'{i:03d}_{int(0):03d}.png'), img_pred_)
             if args.save_depth:
                 depths += [save_depth(last_results['depth_fine'], h, w,
                                       dir_name, f'depth_{i:03d}_{int(0):03d}.png')]
         else:
             sample = dataset[i]
-            if args.split.startswith('test_spiral') and 'view_dir' not in kwargs:
-                kwargs['view_dir'] = dataset[0]['rays'][:, 3:6].to(device)
+            # if args.split.startswith('test_spiral') and 'view_dir' not in kwargs:
+            #     kwargs['view_dir'] = dataset[0]['rays'][:, 3:6].to(device)
             ts = None if 'ts' not in sample else sample['ts'].to(device)
             if last_results is None:
                 results = f(models, embeddings, sample['rays'].to(device), ts,
@@ -216,16 +213,17 @@ if __name__ == "__main__":
                     else:
                         img_pred, depth_pred = interpolate(results, results_tp1, 
                                         dt, dataset.Ks[sample['cam_ids']], sample['c2w'], (w, h))
-                    img_pred = (255*np.clip(img_pred.numpy(), 0, 1)).astype(np.uint8)
-                    imgs += [img_pred]
-                    imageio.imwrite(os.path.join(dir_name, f'{i:03d}_{int(dt*100):03d}.png'), img_pred)
+                    img_pred = torch.clip(img_pred, 0, 1)
+                    img_pred_ = (255*img_pred.numpy()).astype(np.uint8)
+                    imgs += [img_pred_]
+                    imageio.imwrite(os.path.join(dir_name, f'{i:03d}_{int(dt*100):03d}.png'), img_pred_)
                     if args.save_depth:
                         depths += [save_depth(depth_pred, h, w,
                                               dir_name, f'depth_{i:03d}_{int(dt*100):03d}.png')]
                 last_results = results_tp1
             else: # one image
-                img_pred = np.clip(results['rgb_fine'].view(h, w, 3).numpy(), 0, 1)
-                img_pred_ = (img_pred*255).astype(np.uint8)
+                img_pred = torch.clip(results['rgb_fine'].view(h, w, 3), 0, 1)
+                img_pred_ = (img_pred.numpy()*255).astype(np.uint8)
                 imgs += [img_pred_]
                 imageio.imwrite(os.path.join(dir_name, f'{i:03d}.png'), img_pred_)
                 if args.save_depth:
@@ -235,18 +233,29 @@ if __name__ == "__main__":
         if args.split == 'test':
             rgbs = sample['rgbs']
             img_gt = rgbs.view(h, w, 3)
-            psnrs += [metrics.psnr(img_gt, img_pred).item()]
+            psnrs[i, 0] = metrics.psnr(img_gt, img_pred).item()
+            ssims[i, 0] = metrics.ssim(img_gt, img_pred).item()
+            lpipss[i, 0] = metrics.lpips(lpips_model, img_gt, img_pred).item()
+            if 'mask' in sample:
+                mask = sample['mask'].view(h, w)
+                psnrs[i, 1] = metrics.psnr(img_gt, img_pred, mask==0).item()
+                ssims[i, 1] = metrics.ssim(img_gt, img_pred, mask==0).item()
+                lpipss[i, 1] = metrics.lpips(lpips_model, img_gt, img_pred, mask==0).item()
 
-            if args.save_error:
-                err = torch.abs(img_gt-img_pred).sum(-1).numpy()
-                err = (err-err.min())/(err.max()-err.min())
-                err_vis = cv2.applyColorMap((err*255).astype(np.uint8), cv2.COLORMAP_JET)
-                cv2.imwrite(os.path.join(dir_name, f'err_{i:03d}.png'), err_vis)
+    if args.split == 'test':
+        mean_psnr = np.nanmean(psnrs, 0)
+        mean_ssim = np.nanmean(ssims, 0)
+        mean_lpips = np.nanmean(lpipss, 0)
 
-    if psnrs:
-        mean_psnr = np.mean(psnrs)
-        print(f'Mean PSNR : {mean_psnr:.2f}')
-        np.save(os.path.join(dir_name, 'psnr.npy'), np.array(psnrs))
+        np.save(os.path.join(dir_name, 'psnr.npy'), psnrs)
+        np.save(os.path.join(dir_name, 'ssim.npy'), ssims)
+        np.save(os.path.join(dir_name, 'lpips.npy'), lpipss)
+
+        print(f'Score \t Whole image  \t Dynamic only')
+        print(f'-------------------------------------')
+        print(f'PSNR  \t {mean_psnr[0]:.4f} \t {mean_psnr[1]:.4f}')
+        print(f'SSIM  \t {mean_ssim[0]:.4f} \t {mean_ssim[1]:.4f}')
+        print(f'LPIPS \t {mean_lpips[0]:.4f} \t {mean_lpips[1]:.4f}')
 
     imageio.mimsave(os.path.join(dir_name, f'{args.scene_name}.{args.video_format}'),
                     imgs, fps=args.fps)
