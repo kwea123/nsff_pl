@@ -202,11 +202,29 @@ class NeRFSystem(LightningModule):
         kwargs = {'output_transient': self.output_transient,
                   'output_transient_flow': []}
         results = self(rays, ts, test_time=True, **kwargs)
+
+        # compute error metrics
+        W, H = self.hparams.img_wh
+        img = torch.clip(results['rgb_fine'].view(H, W, 3).permute(2, 0, 1).cpu(), 0, 1)
+        img_gt = rgbs.view(H, W, 3).permute(2, 0, 1).cpu()
+
+        rmse_map = ((img_gt-img)**2).mean(0)**0.5
+        rmse_map_b = blend_images(img, visualize_depth(-rmse_map), 0.5)
+
+        ssim_map = ssim(img_gt.permute(1, 2, 0), img.permute(1, 2, 0), reduction='none').mean(-1)
+        ssim_map_b = blend_images(img, visualize_depth(-ssim_map), 0.5)
+        if self.hparams.prioritized_replay: # update weights
+            # high ssim = low priority
+            self.train_dataset.weights[ts[0].item()] = 1-ssim_map.numpy().flatten()
+
+        lpips_map = lpips(self.lpips_m, img_gt.permute(1, 2, 0), img.permute(1, 2, 0), reduction='none')
+        lpips_map_b = blend_images(img, visualize_depth(-lpips_map), 0.5)
     
-        if batch_nb == 0:
-            W, H = self.hparams.img_wh
-            img = torch.clip(results['rgb_fine'].view(H, W, 3).permute(2, 0, 1).cpu(), 0, 1)
-            img_gt = rgbs.view(H, W, 3).permute(2, 0, 1).cpu()
+        if self.hparams.prioritized_replay:
+            batch_nb_to_visualize = self.train_dataset.N_frames//2 # visualize the middle image
+        else:
+            batch_nb_to_visualize = 0
+        if batch_nb == batch_nb_to_visualize: 
             depth = visualize_depth(results['depth_fine'].view(H, W))
             img_list = [img_gt, img, depth]
             if self.output_transient:
@@ -217,17 +235,8 @@ class NeRFSystem(LightningModule):
             if 'disp' in batch: img_list += [visualize_depth(-disp.view(H, W))]
             img_grid = make_grid(img_list, nrow=3) # 3 images per row
             self.logger.experiment.add_image('reconstruction/decomposition', img_grid, self.global_step)
-
-            rmse_map = ((img_gt-img)**2).mean(0)**0.5
-            rmse_map_b = blend_images(img, visualize_depth(-rmse_map), 0.5)
             self.logger.experiment.add_image('error_map/rmse', rmse_map_b, self.global_step)
-
-            ssim_map = ssim(img_gt.permute(1, 2, 0), img.permute(1, 2, 0), reduction='none')
-            ssim_map_b = blend_images(img, visualize_depth(-ssim_map), 0.5)
             self.logger.experiment.add_image('error_map/ssim', ssim_map_b, self.global_step)
-
-            lpips_map = lpips(self.lpips_m, img_gt.permute(1, 2, 0), img.permute(1, 2, 0), reduction='none')
-            lpips_map_b = blend_images(img, visualize_depth(-lpips_map), 0.5)
             self.logger.experiment.add_image('error_map/lpips', lpips_map_b, self.global_step)
 
         log = {'val_psnr': psnr(results['rgb_fine'], rgbs),
@@ -276,7 +285,7 @@ def main(hparams):
                       gpus=hparams.num_gpus,
                       num_nodes=hparams.num_nodes,
                       accelerator='ddp' if hparams.num_gpus>1 else None,
-                      num_sanity_val_steps=1,
+                      num_sanity_val_steps=0,
                       reload_dataloaders_every_epoch=True,
                       benchmark=True,
                       profiler="simple" if hparams.num_gpus==1 else None,
