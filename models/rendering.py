@@ -126,7 +126,7 @@ def render_rays(models,
             transient_flows_w[zs>z_far] = 0
 
             noise = torch.randn_like(transient_sigmas_w) * noise_std
-            transient_alphas_w = 1-torch.exp(-deltas*act(transient_sigmas_w+noise))
+            transient_alphas_w = 1-torch.exp(-transient_deltas*act(transient_sigmas_w+noise))
             alphas_w = 1-(1-static_alphas)*(1-transient_alphas_w)
             alphas_w_sh = torch.cat([torch.ones_like(alphas_w[:, :1]), 1-alphas_w], -1)
             transmittance_w = torch.cumprod(alphas_w_sh[:, :-1], -1)
@@ -200,17 +200,18 @@ def render_rays(models,
             transient_sigmas[visibilities.view_as(transient_sigmas)==0] = -10
 
         deltas = zs[:, 1:] - zs[:, :-1] # (N_rays, N_samples_-1)
-        deltas = torch.cat([deltas, 100*torch.ones_like(deltas[:, :1])], -1)
+        static_deltas = torch.cat([deltas, 100*torch.ones_like(deltas[:, :1])], -1)
+        transient_deltas = torch.cat([deltas, 1e-3*torch.ones_like(deltas[:, :1])], -1)
 
         results[f'static_sigmas_{typ}'] = static_sigmas = \
             act(static_sigmas+torch.randn_like(static_sigmas)*noise_std)
-        alphas = 1-torch.exp(-deltas*static_sigmas)
+        alphas = 1-torch.exp(-static_deltas*static_sigmas)
 
         if output_transient:
             static_alphas = alphas
             results[f'transient_sigmas_{typ}'] = transient_sigmas = \
                 act(transient_sigmas+torch.randn_like(transient_sigmas)*noise_std)
-            transient_alphas = 1-torch.exp(-deltas*transient_sigmas)
+            transient_alphas = 1-torch.exp(-transient_deltas*transient_sigmas)
             alphas = 1-(1-static_alphas)*(1-transient_alphas)
 
             if (not test_time) and output_transient_flow: # render with flowed-xyzs
