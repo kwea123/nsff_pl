@@ -178,7 +178,7 @@ if __name__ == "__main__":
         ssims = np.zeros((dataset.N_frames, 2))
         lpipss = np.zeros((dataset.N_frames, 2))
 
-    lpips_model = lpips.LPIPS(net='alex', spatial=True)
+        lpips_model = lpips.LPIPS(net='alex', spatial=True)
 
     last_results = None
     for i in tqdm(range(len(dataset))):
