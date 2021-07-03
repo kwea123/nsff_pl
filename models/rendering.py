@@ -201,7 +201,7 @@ def render_rays(models,
 
         deltas = zs[:, 1:] - zs[:, :-1] # (N_rays, N_samples_-1)
         static_deltas = torch.cat([deltas, 100*torch.ones_like(deltas[:, :1])], -1)
-        transient_deltas = torch.cat([deltas, 1e-3*torch.ones_like(deltas[:, :1])], -1)
+        transient_deltas = torch.cat([deltas, 100*torch.ones_like(deltas[:, :1])], -1)
 
         results[f'static_sigmas_{typ}'] = static_sigmas = \
             act(static_sigmas+torch.randn_like(static_sigmas)*noise_std)
