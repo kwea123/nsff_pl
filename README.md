@@ -232,8 +232,10 @@ python train.py \
   --optimizer adam --lr 5e-4 --lr_scheduler cosine \
   --exp_name exp
 ```
-  
-**Important** You need to set `--N_vocab` to more than the number of the images (default 100). E.g. set `--N_vocab 400` if you have 380 images.
+
+I also implemented a hard sampling strategy to improve the quality of the hard regions. Add `--hard_sampling` to enable it.
+
+Specifically, I compute the SSIM between the prediction and the GT at the end of each epoch, and use **1-SSIM** as the sampling probability for the next epoch. This allows rays with larger errors to be sampled more frequently, and thus improve the result. The choice of SSIM is that it reflects more visual quality, and is less sensible to noise or small pixel displacement like PSNR.
   
 </details>
 
@@ -270,7 +272,7 @@ More specifically, the `split` argument specifies which novel view to generate:
 - [x] Add COLMAP reconstruction tutorial (mask out dynamic region).
 - [x] Remove NSFF dependency for data preparation. More precisely, the original code needs quite a lot modifications to work on own data, and the depth/flow are calculated on resized images, which might reduce their accuracy.
 - [x] Add spiral path for testing.
-- [ ] Add mask hard mining at the beginning of training. Or prioritized experience replay.
+- [x] Add mask hard mining at the beginning of training. Or prioritized experience replay.
 
 # Acknowledgment
 
