@@ -48,9 +48,6 @@ def get_opts():
                         help='chunk size to split the input to avoid OOM')
 
     # NeRF-W parameters
-    parser.add_argument('--N_vocab', type=int, default=100,
-                        help='''number of vocabulary (number of images) 
-                                in the dataset for nn.Embedding''')
     parser.add_argument('--encode_a', default=False, action="store_true",
                         help='whether to encode appearance (NeRF-A)')
     parser.add_argument('--N_a', type=int, default=48,
@@ -146,11 +143,11 @@ if __name__ == "__main__":
     embeddings = {'xyz': PosEmbedding(9, 10), 'dir': PosEmbedding(3, 4)}
 
     if args.encode_a:
-        embedding_a = torch.nn.Embedding(args.N_vocab, args.N_a).to(device)
+        embedding_a = torch.nn.Embedding(dataset.N_frames, args.N_a).to(device)
         embeddings['a'] = embedding_a
         load_ckpt(embedding_a, args.ckpt_path, 'embedding_a')
     if args.encode_t:
-        embedding_t = torch.nn.Embedding(args.N_vocab, args.N_tau).to(device)
+        embedding_t = torch.nn.Embedding(dataset.N_frames, args.N_tau).to(device)
         embeddings['t'] = embedding_t
         load_ckpt(embedding_t, args.ckpt_path, 'embedding_t')
 

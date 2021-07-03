@@ -10,12 +10,11 @@ from PIL import Image
 from torchvision import transforms as T
 
 from . import ray_utils, depth_utils, colmap_utils, flowlib
-from buffer.replay_buffer import PrioritizedReplayBuffer
 
 
 class MonocularDataset(Dataset):
     def __init__(self, root_dir, split='train', img_wh=(512, 288),
-                 start_end=(0, 30), cache_dir=None, prioritized_replay=False):
+                 start_end=(0, 30), cache_dir=None, hard_sampling=False):
         """
         split options:
             train - training mode (used in train.py) rays are from all images
@@ -35,9 +34,7 @@ class MonocularDataset(Dataset):
         self.start_frame = start_end[0]
         self.end_frame = start_end[1]
         self.cache_dir = cache_dir
-        self.prioritized_replay = prioritized_replay
-        if self.prioritized_replay:
-            self.beta = 1.0 # maybe vary this according to steps
+        self.hard_sampling = hard_sampling
         self.define_transforms()
         self.read_meta()
 
@@ -144,7 +141,7 @@ class MonocularDataset(Dataset):
             if self.cache_dir:
                 self.rays_dict = torch.load(os.path.join(self.cache_dir, 'rays_dict.pt'))
             else:
-                self.rays_dict = {'static': {}, 'dynamic': {}}
+                self.rays_dict = {}
                 for t in range(self.N_frames):
                     img = Image.open(self.image_paths[t]).convert('RGB')
                     img = img.resize(self.img_wh, Image.LANCZOS)
@@ -181,26 +178,14 @@ class MonocularDataset(Dataset):
                     else:
                         flow_bw = torch.zeros(len(rays_o), 2)
 
-                    rays = [rays_o, rays_d, img, rays_t, disp, rays_mask, uv+flow_fw, uv+flow_bw]
-                    rays = torch.cat(rays, 1) # (h*w, 3+3+3+1+1+1+2+2=16)
+                    rays = [rays_o, rays_d, img, rays_t,
+                            disp, rays_mask,
+                            uv+flow_fw, uv+flow_bw]
+                    self.rays_dict[t] = torch.cat(rays, 1) # (h*w, 3+3+3+1+1+1+2+2=16)
 
-                    self.rays_dict['static'][t] = rays[mask>0]
-                    self.rays_dict['dynamic'][t] = rays[mask==0]
-
-            if self.prioritized_replay:
-                self.replay_buffers = \
-                    [PrioritizedReplayBuffer(self.img_wh[0]*self.img_wh[1], alpha=0.8)
-                     for _ in range(self.N_frames)]
-                # add all pixels with same priority
-                for t in range(self.N_frames):
-                    for ray in self.rays_dict['static']:
-                        self.replay_buffers[t].add(ray)
-                    for ray in self.rays_dict['dynamic']:
-                        self.replay_buffers[t].add(ray)
-
-        elif self.split == 'val':
-            self.val_id = self.N_frames//2
-            print('val image is', self.image_paths[self.val_id])
+            if self.hard_sampling:
+                self.weights = [np.ones(self.img_wh[0]*self.img_wh[1])
+                                for _ in range(self.N_frames)]
 
         elif self.split == 'test':
             self.poses_test = self.poses.copy()
@@ -234,15 +219,14 @@ class MonocularDataset(Dataset):
     def __getitem__(self, idx):
         if self.split == 'train':
             t = np.random.choice(self.N_frames)
-            if self.prioritized_replay:
-                rays, weights, batch_idxs = \
-                    self.replay_buffer[t].sample(self.batch_size, beta=self.beta)
-            else:
-                rand_idx = np.random.choice(len(self.rays_dict['static'][t])+
-                                            len(self.rays_dict['dynamic'][t]),
-                                            self.batch_size)
-                rays = torch.cat([self.rays_dict['static'][t],
-                                  self.rays_dict['dynamic'][t]], 0)[rand_idx]
+            if self.hard_sampling: # random according to weights
+                #TODO: when loading checkpoints, the weights must be loaded or recalculated too!
+                rand_idx = np.random.choice(np.arange(self.img_wh[0]*self.img_wh[1]), 
+                                            self.batch_size,
+                                            p=self.weights[t]/self.weights[t].sum())
+            else: # uniformly random
+                rand_idx = np.random.choice(len(self.rays_dict[t]), self.batch_size)
+            rays = self.rays_dict[t][rand_idx]
             sample = {'rays': rays[:, :6],
                       'rgbs': rays[:, 6:9],
                       'ts': rays[:, 9].long(),
@@ -251,25 +235,23 @@ class MonocularDataset(Dataset):
                       'rays_mask': rays[:, 11],
                       'uv_fw': rays[:, 12:14],
                       'uv_bw': rays[:, 14:16]}
-            if self.prioritized_replay:
-                sample['weights'] = weights # FloatTensor
-                sample['batch_idxs'] = batch_idxs # list
+            if self.hard_sampling: sample['rand_idx'] = torch.LongTensor(rand_idx)
         else:
             if self.split == 'val':
-                c2w = torch.FloatTensor(self.poses[self.val_id])
-                time = self.val_id % self.N_frames
+                c2w = torch.FloatTensor(self.poses[self.N_frames//2])
+                t = self.N_frames//2
             else:
                 c2w = torch.FloatTensor(self.poses_test[idx])
                 if self.split == 'test':
-                    time = idx
+                    t = idx
                 elif self.split.startswith('test_spiral'):
                     if self.split == 'test_spiral': 
-                        time = int(idx/len(self.poses_test)*self.N_frames)
+                        t = int(idx/len(self.poses_test)*self.N_frames)
                     else:
-                        time = int(self.split.split('_')[1][6:])
+                        t = int(self.split.split('_')[1][6:])
                 elif self.split.startswith('test_fixview'):
-                    time = idx
-                else: time = 0
+                    t = idx
+                else: t = 0
 
             directions = ray_utils.get_ray_directions(self.img_wh[1], self.img_wh[0], self.K)
             rays_o, rays_d = ray_utils.get_rays(directions, c2w)
@@ -277,38 +259,37 @@ class MonocularDataset(Dataset):
             rays_o, rays_d = ray_utils.get_ndc_rays(self.K, 1.0, 
                                                     shift_near, rays_o, rays_d)
 
-            rays_t = time * torch.ones(len(rays_o), dtype=torch.long) # (h*w)
+            rays_t = t * torch.ones(len(rays_o), dtype=torch.long) # (h*w)
 
             rays = torch.cat([rays_o, rays_d], 1) # (h*w, 6)
 
             sample = {'rays': rays, 'ts': rays_t, 'c2w': c2w}
 
             sample['cam_ids'] = 0
-            id_ = self.val_id if self.split == 'val' else time
-            img = Image.open(self.image_paths[id_]).convert('RGB')
+            img = Image.open(self.image_paths[t]).convert('RGB')
             img = img.resize(self.img_wh, Image.LANCZOS)
             img = self.transform(img) # (3, h, w)
             img = img.view(3, -1).T # (h*w, 3)
             sample['rgbs'] = img
 
-            disp = cv2.imread(self.disp_paths[id_], cv2.IMREAD_ANYDEPTH).astype(np.float32)
+            disp = cv2.imread(self.disp_paths[t], cv2.IMREAD_ANYDEPTH).astype(np.float32)
             disp = cv2.resize(disp, self.img_wh, interpolation=cv2.INTER_NEAREST)
             sample['disp'] = torch.FloatTensor(disp.flatten())
 
-            mask = Image.open(self.mask_paths[id_]).convert('L')
+            mask = Image.open(self.mask_paths[t]).convert('L')
             mask = mask.resize(self.img_wh, Image.NEAREST)
             mask = self.transform(mask).flatten() # (h*w)
             sample['mask'] = mask
 
-            if time < self.N_frames-1:
-                flow_fw = flowlib.read_flow(self.flow_fw_paths[id_])
+            if t < self.N_frames-1:
+                flow_fw = flowlib.read_flow(self.flow_fw_paths[t])
                 flow_fw = flowlib.resize_flow(flow_fw, self.img_wh[0], self.img_wh[1])
                 sample['flow_fw'] = flow_fw
             else:
                 sample['flow_fw'] = torch.zeros(self.img_wh[1], self.img_wh[0], 2)
 
-            if time >= 1:
-                flow_bw = flowlib.read_flow(self.flow_bw_paths[id_])
+            if t >= 1:
+                flow_bw = flowlib.read_flow(self.flow_bw_paths[t])
                 flow_bw = flowlib.resize_flow(flow_bw, self.img_wh[0], self.img_wh[1])
                 sample['flow_bw'] = flow_bw
             else:

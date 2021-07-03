@@ -36,9 +36,6 @@ def get_opts():
                         help='std dev of noise added to regularize sigma')
 
     # NeRF-W parameters
-    parser.add_argument('--N_vocab', type=int, default=100,
-                        help='''number of vocabulary (number of images) 
-                                in the dataset for nn.Embedding''')
     parser.add_argument('--encode_a', default=False, action="store_true",
                         help='whether to encode appearance (NeRF-A)')
     parser.add_argument('--N_a', type=int, default=48,
@@ -60,8 +57,8 @@ def get_opts():
                         help='chunk size to split the input to avoid OOM')
     parser.add_argument('--num_epochs', type=int, default=16,
                         help='number of training epochs')
-    parser.add_argument('--prioritized_replay', default=False, action="store_true",
-                        help='sample hard rays more according to prioritized experience replay')
+    parser.add_argument('--hard_sampling', default=False, action="store_true",
+                        help='sample hard rays more according to SSIM')
 
     parser.add_argument('--num_gpus', type=int, default=1,
                         help='number of gpus')

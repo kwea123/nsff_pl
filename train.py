@@ -1,6 +1,7 @@
 import os
 from opt import get_opts
 import torch
+import numpy as np
 from collections import defaultdict
 
 from torch.utils.data import DataLoader
@@ -18,8 +19,8 @@ from torchvision.utils import make_grid
 from losses import loss_dict
 
 # metrics
-from metrics import *
-import third_party.lpips.lpips.lpips as lpips_model
+import metrics
+import third_party.lpips.lpips.lpips as lpips
 
 # pytorch-lightning
 from pytorch_lightning import LightningModule, Trainer
@@ -31,7 +32,7 @@ from pytorch_lightning import seed_everything
 seed_everything(42, workers=True)
 
 
-class NeRFSystem(LightningModule):
+class NSFFSystem(LightningModule):
     def __init__(self, hparams):
         super().__init__()
         self.save_hyperparameters(hparams)
@@ -45,15 +46,15 @@ class NeRFSystem(LightningModule):
         # models
         self.embedding_xyz = PosEmbedding(hparams.S_emb_xyz, hparams.N_emb_xyz)
         self.embedding_dir = PosEmbedding(hparams.S_emb_dir, hparams.N_emb_dir)
-        self.embeddings = {'xyz': self.embedding_xyz,
-                           'dir': self.embedding_dir}
+        self.embeddings = {'xyz': self.embedding_xyz, 'dir': self.embedding_dir}
 
+        self.N_frames = self.hparams.start_end[1]-self.hparams.start_end[0]
         if hparams.encode_a:
-            self.embedding_a = torch.nn.Embedding(hparams.N_vocab, hparams.N_a)
+            self.embedding_a = torch.nn.Embedding(self.N_frames, hparams.N_a)
             self.embeddings['a'] = self.embedding_a
             load_ckpt(self.embedding_a, hparams.weight_path, 'embedding_a')
         if hparams.encode_t:
-            self.embedding_t = torch.nn.Embedding(hparams.N_vocab, hparams.N_tau)
+            self.embedding_t = torch.nn.Embedding(self.N_frames, hparams.N_tau)
             self.embeddings['t'] = self.embedding_t
             load_ckpt(self.embedding_t, hparams.weight_path, 'embedding_t')
 
@@ -127,14 +128,19 @@ class NeRFSystem(LightningModule):
                   'img_wh': tuple(self.hparams.img_wh),
                   'start_end': tuple(self.hparams.start_end),
                   'cache_dir': self.hparams.cache_dir,
-                  'prioritized_replay': self.hparams.prioritized_replay}
+                  'hard_sampling': self.hparams.hard_sampling}
         self.train_dataset = dataset(split='train', **kwargs)
         self.val_dataset = dataset(split='val', **kwargs)
 
         if self.output_transient_flow:
             self.loss.register_buffer('Ks', self.train_dataset.Ks)
             self.loss.register_buffer('Ps', self.train_dataset.Ps)
-            self.loss.max_t = self.train_dataset.N_frames-1
+            self.loss.max_t = self.N_frames-1
+
+        if self.hparams.hard_sampling:
+            # create buffer to save temporary rgbs
+            self.register_buffer('tmp_rgb',
+                torch.zeros(self.N_frames, self.hparams.img_wh[1]*self.hparams.img_wh[0], 3))
 
     def configure_optimizers(self):
         kwargs = {}
@@ -162,8 +168,8 @@ class NeRFSystem(LightningModule):
 
     def on_epoch_start(self):
         # for evaluation
-        if not hasattr(self, 'lpips_m'):
-            self.lpips_m = lpips_model.LPIPS(net='alex', spatial=True)
+        if not hasattr(self, 'lpips_model'):
+            self.lpips_model = lpips.LPIPS(net='alex', spatial=True)
 
     def on_train_epoch_start(self):
         self.loss.lambda_geo_d = self.hparams.lambda_geo_init * 0.1**(self.current_epoch//10)
@@ -175,17 +181,14 @@ class NeRFSystem(LightningModule):
                   'output_transient': self.output_transient,
                   'output_transient_flow': self.output_transient_flow}
         results = self(rays, ts, **kwargs)
-        # if self.train_dataset.prioritized_replay:
-        #     new_priorities = ((results['rgb_fine']-rgbs)**2).mean(-1)+1e-8
-        #     self.train_dataset.replay_buffers[ts[0].item()] \
-        #         .update_priorities(batch['batch_idxs'], new_priorities.detach().cpu().numpy())
-        #     kwargs['weights'] = batch['weights']
+        if self.hparams.hard_sampling:
+            self.tmp_rgb[ts, batch['rand_idx']] = results['rgb_fine']
 
         loss_d = self.loss(results, batch, **kwargs)
         loss = sum(l for l in loss_d.values())
 
         with torch.no_grad():
-            psnr_ = psnr(results['rgb_fine'], rgbs)
+            psnr_ = metrics.psnr(results['rgb_fine'], rgbs)
 
         self.log('lr', get_learning_rate(self.optimizer))
         self.log('train/loss', loss)
@@ -205,47 +208,52 @@ class NeRFSystem(LightningModule):
 
         # compute error metrics
         W, H = self.hparams.img_wh
-        img = torch.clip(results['rgb_fine'].view(H, W, 3).permute(2, 0, 1).cpu(), 0, 1)
-        img_gt = rgbs.view(H, W, 3).permute(2, 0, 1).cpu()
+        img = torch.clip(results['rgb_fine'].view(H, W, 3).cpu(), 0, 1)
+        img_gt = rgbs.view(H, W, 3).cpu()
 
-        rmse_map = ((img_gt-img)**2).mean(0)**0.5
-        rmse_map_b = blend_images(img, visualize_depth(-rmse_map), 0.5)
+        rmse_map = ((img_gt-img)**2).mean(-1)**0.5
+        rmse_map_blend = blend_images(img, visualize_depth(-rmse_map), 0.5)
 
-        ssim_map = ssim(img_gt.permute(1, 2, 0), img.permute(1, 2, 0), reduction='none').mean(-1)
-        ssim_map_b = blend_images(img, visualize_depth(-ssim_map), 0.5)
-        if self.hparams.prioritized_replay: # update weights
-            # high ssim = low priority
-            self.train_dataset.weights[ts[0].item()] = 1-ssim_map.numpy().flatten()
+        ssim_map = metrics.ssim(img_gt, img, reduction='none').mean(-1)
+        ssim_map_blend = blend_images(img, visualize_depth(-ssim_map), 0.5)
 
-        lpips_map = lpips(self.lpips_m, img_gt.permute(1, 2, 0), img.permute(1, 2, 0), reduction='none')
-        lpips_map_b = blend_images(img, visualize_depth(-lpips_map), 0.5)
-    
-        if self.hparams.prioritized_replay:
-            batch_nb_to_visualize = self.train_dataset.N_frames//2 # visualize the middle image
-        else:
-            batch_nb_to_visualize = 0
-        if batch_nb == batch_nb_to_visualize: 
-            depth = visualize_depth(results['depth_fine'].view(H, W))
-            img_list = [img_gt, img, depth]
-            if self.output_transient:
-                img_list += [visualize_mask(results['transient_alpha_fine'].view(H, W))]
-                img_list += [torch.clip(results['_static_rgb_fine'].view(H, W, 3).permute(2, 0, 1).cpu(), 0, 1)]
-                img_list += [visualize_depth(results['_static_depth_fine'].view(H, W))]
-            if 'mask' in batch: img_list += [visualize_mask(1-mask.view(H, W))]
-            if 'disp' in batch: img_list += [visualize_depth(-disp.view(H, W))]
-            img_grid = make_grid(img_list, nrow=3) # 3 images per row
-            self.logger.experiment.add_image('reconstruction/decomposition', img_grid, self.global_step)
-            self.logger.experiment.add_image('error_map/rmse', rmse_map_b, self.global_step)
-            self.logger.experiment.add_image('error_map/ssim', ssim_map_b, self.global_step)
-            self.logger.experiment.add_image('error_map/lpips', lpips_map_b, self.global_step)
+        lpips_map = metrics.lpips(self.lpips_model, img_gt, img, reduction='none')
+        lpips_map_blend = blend_images(img, visualize_depth(-lpips_map), 0.5)
 
-        log = {'val_psnr': psnr(results['rgb_fine'], rgbs),
+        depth = visualize_depth(results['depth_fine'].view(H, W))
+        img_list = [img_gt.permute(2, 0, 1), img.permute(2, 0, 1), depth]
+        if self.output_transient:
+            img_list += [visualize_mask(results['transient_alpha_fine'].view(H, W))]
+            img_list += [torch.clip(results['_static_rgb_fine'].view(H, W, 3).permute(2, 0, 1).cpu(), 0, 1)]
+            img_list += [visualize_depth(results['_static_depth_fine'].view(H, W))]
+        if 'mask' in batch: img_list += [visualize_mask(1-mask.view(H, W))]
+        if 'disp' in batch: img_list += [visualize_depth(-disp.view(H, W))]
+        img_grid = make_grid(img_list, nrow=3) # 3 images per row
+        self.logger.experiment.add_image('reconstruction/decomposition', img_grid, self.global_step)
+        self.logger.experiment.add_image('error_map/rmse', rmse_map_blend, self.global_step)
+        self.logger.experiment.add_image('error_map/ssim', ssim_map_blend, self.global_step)
+        self.logger.experiment.add_image('error_map/lpips', lpips_map_blend, self.global_step)
+
+        log = {'val_psnr': metrics.psnr(results['rgb_fine'], rgbs),
                'val_ssim': ssim_map.mean(),
                'val_lpips': lpips_map.mean()}
         if self.output_transient and (mask==0).any():
-            log['val_psnr_mask'] = psnr(results['rgb_fine'], rgbs, mask==0)
+            log['val_psnr_mask'] = metrics.psnr(results['rgb_fine'], rgbs, mask==0)
             log['val_ssim_mask'] = ssim_map[mask.view(H, W)==0].mean()
             log['val_lpips_mask'] = lpips_map[mask.view(H, W)==0].mean()
+
+        if self.hparams.hard_sampling:
+            # update weights, indepedent of the above val result (use self.tmp_rgb buffer)
+            # high ssim = low weight
+            for i in range(self.N_frames):
+                img_gt = self.train_dataset.rays_dict[i][:, 6:9].view(H, W, 3)
+                img = self.tmp_rgb[i].view(H, W, 3).cpu()
+                _ssim_map = metrics.ssim(img_gt, img_i, reduction='none').mean(-1)
+                self.train_dataset.weights[i] = 1-_ssim_map.numpy().flatten()
+                if i == self.N_frames//2:
+                    _ssim_map_blend = blend_images(img, visualize_depth(-_ssim_map), 0.5)
+                    self.logger.experiment.add_image('misc/moving_ssim',
+                                                     _ssim_map_blend, self.global_step)
 
         return log
 
@@ -266,7 +274,7 @@ class NeRFSystem(LightningModule):
 
 
 def main(hparams):
-    system = NeRFSystem(hparams)
+    system = NSFFSystem(hparams)
     ckpt_cb = ModelCheckpoint(dirpath=f'ckpts/{hparams.exp_name}', filename='{epoch:d}',
                               save_top_k=-1)
 
