@@ -212,13 +212,13 @@ class NSFFSystem(LightningModule):
         img_gt = rgbs.view(H, W, 3).cpu()
 
         rmse_map = ((img_gt-img)**2).mean(-1)**0.5
-        rmse_map_blend = blend_images(img, visualize_depth(-rmse_map), 0.5)
+        rmse_map_blend = blend_images(img.permute(2, 0, 1), visualize_depth(-rmse_map), 0.5)
 
         ssim_map = metrics.ssim(img_gt, img, reduction='none').mean(-1)
-        ssim_map_blend = blend_images(img, visualize_depth(-ssim_map), 0.5)
+        ssim_map_blend = blend_images(img.permute(2, 0, 1), visualize_depth(-ssim_map), 0.5)
 
         lpips_map = metrics.lpips(self.lpips_model, img_gt, img, reduction='none')
-        lpips_map_blend = blend_images(img, visualize_depth(-lpips_map), 0.5)
+        lpips_map_blend = blend_images(img.permute(2, 0, 1), visualize_depth(-lpips_map), 0.5)
 
         depth = visualize_depth(results['depth_fine'].view(H, W))
         img_list = [img_gt.permute(2, 0, 1), img.permute(2, 0, 1), depth]
@@ -248,10 +248,10 @@ class NSFFSystem(LightningModule):
             for i in range(self.N_frames):
                 img_gt = self.train_dataset.rays_dict[i][:, 6:9].view(H, W, 3)
                 img = self.tmp_rgb[i].view(H, W, 3).cpu()
-                _ssim_map = metrics.ssim(img_gt, img_i, reduction='none').mean(-1)
+                _ssim_map = metrics.ssim(img_gt, img, reduction='none').mean(-1)
                 self.train_dataset.weights[i] = 1-_ssim_map.numpy().flatten()
                 if i == self.N_frames//2:
-                    _ssim_map_blend = blend_images(img, visualize_depth(-_ssim_map), 0.5)
+                    _ssim_map_blend = blend_images(img.permute(2, 0, 1), visualize_depth(-_ssim_map), 0.5)
                     self.logger.experiment.add_image('misc/moving_ssim',
                                                      _ssim_map_blend, self.global_step)
 
@@ -293,7 +293,7 @@ def main(hparams):
                       gpus=hparams.num_gpus,
                       num_nodes=hparams.num_nodes,
                       accelerator='ddp' if hparams.num_gpus>1 else None,
-                      num_sanity_val_steps=0,
+                      num_sanity_val_steps=1,
                       reload_dataloaders_every_epoch=True,
                       benchmark=True,
                       profiler="simple" if hparams.num_gpus==1 else None,
