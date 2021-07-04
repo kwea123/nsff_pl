@@ -218,6 +218,7 @@ class MonocularDataset(Dataset):
 
     def __getitem__(self, idx):
         if self.split == 'train':
+            # TODO: sample t more in a ping-pong version to avoid bad static convergence at the beginning...
             t = np.random.choice(self.N_frames)
             if self.hard_sampling: # random according to weights
                 #TODO: when loading checkpoints, the weights must be loaded or recalculated too!
