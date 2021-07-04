@@ -209,19 +209,20 @@ class NSFFSystem(LightningModule):
         # compute error metrics
         W, H = self.hparams.img_wh
         img = torch.clip(results['rgb_fine'].view(H, W, 3).cpu(), 0, 1)
+        img_ = img.permute(2, 0, 1)
         img_gt = rgbs.view(H, W, 3).cpu()
 
         rmse_map = ((img_gt-img)**2).mean(-1)**0.5
-        rmse_map_blend = blend_images(img.permute(2, 0, 1), visualize_depth(-rmse_map), 0.5)
+        rmse_map_blend = blend_images(img_, visualize_depth(-rmse_map), 0.5)
 
         ssim_map = metrics.ssim(img_gt, img, reduction='none').mean(-1)
-        ssim_map_blend = blend_images(img.permute(2, 0, 1), visualize_depth(-ssim_map), 0.5)
+        ssim_map_blend = blend_images(img_, visualize_depth(-ssim_map), 0.5)
 
         lpips_map = metrics.lpips(self.lpips_model, img_gt, img, reduction='none')
-        lpips_map_blend = blend_images(img.permute(2, 0, 1), visualize_depth(-lpips_map), 0.5)
+        lpips_map_blend = blend_images(img_, visualize_depth(-lpips_map), 0.5)
 
         depth = visualize_depth(results['depth_fine'].view(H, W))
-        img_list = [img_gt.permute(2, 0, 1), img.permute(2, 0, 1), depth]
+        img_list = [img_gt.permute(2, 0, 1), img_, depth]
         if self.output_transient:
             img_list += [visualize_mask(results['transient_alpha_fine'].view(H, W))]
             img_list += [torch.clip(results['_static_rgb_fine'].view(H, W, 3).permute(2, 0, 1).cpu(), 0, 1)]
