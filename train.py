@@ -166,10 +166,10 @@ class NSFFSystem(LightningModule):
                           batch_size=None,
                           pin_memory=True)
 
-    def on_epoch_start(self):
-        # for evaluation
-        if not hasattr(self, 'lpips_model'):
-            self.lpips_model = lpips.LPIPS(net='alex', spatial=True)
+    # def on_epoch_start(self):
+    #     # for evaluation TODO: avoid being saved in ckpt...
+    #     if not hasattr(self, 'lpips_model'):
+    #         self.lpips_model = lpips.LPIPS(net='alex', spatial=True)
 
     def on_train_epoch_start(self):
         self.loss.lambda_geo_d = self.hparams.lambda_geo_init * 0.1**(self.current_epoch//10)
@@ -218,8 +218,8 @@ class NSFFSystem(LightningModule):
         ssim_map = metrics.ssim(img_gt, img, reduction='none').mean(-1)
         ssim_map_blend = blend_images(img_, visualize_depth(-ssim_map), 0.5)
 
-        lpips_map = metrics.lpips(self.lpips_model, img_gt, img, reduction='none')
-        lpips_map_blend = blend_images(img_, visualize_depth(-lpips_map), 0.5)
+        # lpips_map = metrics.lpips(self.lpips_model, img_gt, img, reduction='none')
+        # lpips_map_blend = blend_images(img_, visualize_depth(-lpips_map), 0.5)
 
         depth = visualize_depth(results['depth_fine'].view(H, W))
         img_list = [img_gt.permute(2, 0, 1), img_, depth]
@@ -233,15 +233,15 @@ class NSFFSystem(LightningModule):
         self.logger.experiment.add_image('reconstruction/decomposition', img_grid, self.global_step)
         self.logger.experiment.add_image('error_map/rmse', rmse_map_blend, self.global_step)
         self.logger.experiment.add_image('error_map/ssim', ssim_map_blend, self.global_step)
-        self.logger.experiment.add_image('error_map/lpips', lpips_map_blend, self.global_step)
+        # self.logger.experiment.add_image('error_map/lpips', lpips_map_blend, self.global_step)
 
         log = {'val_psnr': metrics.psnr(results['rgb_fine'], rgbs),
-               'val_ssim': ssim_map.mean(),
-               'val_lpips': lpips_map.mean()}
+               'val_ssim': ssim_map.mean()}
+            #    'val_lpips': lpips_map.mean()}
         if self.output_transient and (mask==0).any():
             log['val_psnr_mask'] = metrics.psnr(results['rgb_fine'], rgbs, mask==0)
             log['val_ssim_mask'] = ssim_map[mask.view(H, W)==0].mean()
-            log['val_lpips_mask'] = lpips_map[mask.view(H, W)==0].mean()
+            # log['val_lpips_mask'] = lpips_map[mask.view(H, W)==0].mean()
 
         if self.hparams.hard_sampling:
             # update weights, indepedent of the above val result (use self.tmp_rgb buffer)
@@ -261,17 +261,17 @@ class NSFFSystem(LightningModule):
     def validation_epoch_end(self, outputs):
         mean_psnr = torch.stack([x['val_psnr'] for x in outputs]).mean()
         mean_ssim = torch.stack([x['val_ssim'] for x in outputs]).mean()
-        mean_lpips = torch.stack([x['val_lpips'] for x in outputs]).mean()
+        # mean_lpips = torch.stack([x['val_lpips'] for x in outputs]).mean()
         self.log('val/psnr', mean_psnr, prog_bar=True)
         self.log('val/ssim', mean_ssim)
-        self.log('val/lpips', mean_lpips)
+        # self.log('val/lpips', mean_lpips)
         if self.output_transient and all(['val_psnr_mask' in x for x in outputs]):
             mean_psnr_mask = torch.stack([x['val_psnr_mask'] for x in outputs]).mean()
             mean_ssim_mask = torch.stack([x['val_ssim_mask'] for x in outputs]).mean()
-            mean_lpips_mask = torch.stack([x['val_lpips_mask'] for x in outputs]).mean()
+            # mean_lpips_mask = torch.stack([x['val_lpips_mask'] for x in outputs]).mean()
             self.log('val/psnr_mask', mean_psnr_mask, prog_bar=True)
             self.log('val/ssim_mask', mean_ssim_mask)
-            self.log('val/lpips_mask', mean_lpips_mask)
+            # self.log('val/lpips_mask', mean_lpips_mask)
 
 
 def main(hparams):
