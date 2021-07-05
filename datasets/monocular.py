@@ -136,6 +136,7 @@ class MonocularDataset(Dataset):
 
         # Step 4: create ray buffers
         if self.split == 'train':
+            self.last_t = -1
             directions, uv = ray_utils.get_ray_directions(
                                 self.img_wh[1], self.img_wh[0], self.K, return_uv=True)
             if self.cache_dir:
@@ -218,9 +219,19 @@ class MonocularDataset(Dataset):
 
     def __getitem__(self, idx):
         if self.split == 'train':
-            # TODO: sample t more in a ping-pong version to avoid bad static convergence at the beginning...
-            t = np.random.choice(self.N_frames)
-            if self.hard_sampling: # random according to weights
+            # first select t (which image)
+            if self.last_t == -1: # the very first sample, uniformly random
+                t = np.random.choice(self.N_frames)
+            else:
+                # for EACH worker, sample t outside some window of the last sampled t
+                # to avoid bad static net convergence (dynamic explained by static)
+                w_size = 5
+                valid_t = list(set(range(self.N_frames))-
+                               set(range(self.last_t-w_size, self.last_t+w_size+1)))
+                t = np.random.choice(valid_t)
+            self.last_t = t
+            # then select the rays
+            if self.hard_sampling: # random rays according to weights
                 #TODO: when loading checkpoints, the weights must be loaded or recalculated too!
                 rand_idx = np.random.choice(np.arange(self.img_wh[0]*self.img_wh[1]), 
                                             self.batch_size,
