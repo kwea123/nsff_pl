@@ -90,7 +90,6 @@ class MonocularDataset(Dataset):
                 if self.start_frame <= j-1 < self.end_frame:
                     visibilities[j-1-self.start_frame, i] = 1
 
-        # TODO: take care of forward moving scenes...
         min_depth = 1e8
         for i in range(self.N_frames):
             # for each image, compute the nearest depth according to real depth from COLMAP
@@ -213,7 +212,8 @@ class MonocularDataset(Dataset):
         self.transform = T.ToTensor()
 
     def __len__(self):
-        if self.split == 'train': return 5000
+        if self.split == 'train':
+            return self.img_wh[0]*self.img_wh[1]*self.N_frames//1000
         if self.split == 'val': return 1
         return len(self.poses_test)
 
