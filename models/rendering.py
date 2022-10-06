@@ -229,7 +229,7 @@ def render_rays(models,
                     render_transient_warping(xyz_bw_, tm1_embedded_, 'fw')
                 # to compute fw-bw consistency
                 results['xyzs_fw_bw'] = xyz_fw + transient_flows_fw_bw
-                results['xyzs_bw_fw'] = xyz_bw + transient_flows_fw_bw
+                results['xyzs_bw_fw'] = xyz_bw + transient_flows_bw_fw
 
         alphas_sh = torch.cat([torch.ones_like(alphas[:, :1]), 1-alphas], -1)
         transmittance = torch.cumprod(alphas_sh[:, :-1], -1)
